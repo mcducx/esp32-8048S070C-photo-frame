@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # esp32-8048S070C-photo-frame
 =======
 # ESP32 Portrait Photo Frame
@@ -30,6 +29,7 @@
 
 1. **Подготовка SD карты**:
    - Отформатируйте в FAT32
+   - Воспользуйтесь моим конвертером https://github.com/mcducx/converter-photo-esp32-8048S070C-photo-frame
    - Добавьте JPEG файлы в корень
    - Оптимальный размер изображений: 480×800 пикселей
 
@@ -92,4 +92,4 @@ When you first compile the project, you may encounter the following error:
 
 After completing these steps, you should have the file located at:  
 `.pio/libdeps/esp32-8048S070C/lv_conf.h`  
->>>>>>> ac8c5f3 (init)
+
