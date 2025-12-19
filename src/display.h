@@ -1,7 +1,6 @@
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
-#include <lvgl.h>
 #include <Arduino_GFX_Library.h>
 #include "TAMC_GT911.h"
 #include <SD.h>
@@ -23,14 +22,9 @@
 extern TAMC_GT911 ts;
 extern Arduino_RGB_Display gfx;
 
-// ==================== LVGL Callbacks ====================
-uint32_t millis_cb(void);
-void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);
-void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data);
-bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap);  // Объявление здесь!
-
-// ==================== Display Setup ====================
+// ==================== Display Functions ====================
+bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap);
 void setup_display();
-void loop_display();
+bool check_touch(uint16_t *x, uint16_t *y);
 
 #endif // DISPLAY_H

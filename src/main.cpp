@@ -9,12 +9,24 @@
 // ==================== Global Variables ====================
 SPIClass sdSPI = SPIClass(HSPI);
 std::vector<String> imageFiles;
-std::vector<int> shuffledIndices;  // Для случайного порядка
+std::vector<int> shuffledIndices;
 int currentImageIndex = 0;
-int currentShuffleIndex = 0;  // Теперь это глобальная переменная
+int currentShuffleIndex = 0;
 unsigned long lastImageChange = 0;
-const unsigned long SLIDESHOW_INTERVAL = 10000;
-bool fatalError = false; // Флаг фатальной ошибки
+
+// Интервалы для слайд-шоу
+const unsigned long intervals[] = {3000, 5000, 10000, 15000, 30000, 60000, 120000};
+int currentIntervalIndex = 2;
+unsigned long slideshowInterval = intervals[currentIntervalIndex];
+
+bool fatalError = false;
+unsigned long lastTouchTime = 0;
+const unsigned long TOUCH_DEBOUNCE = 50; // 50 мс для защиты от дребезга
+
+// ==================== Forward Declarations ====================
+void displayImage(int index);
+void showIntervalMessage();
+void changeInterval();
 
 // ==================== Filter System Files ====================
 bool isSystemFile(const String& filename) {
@@ -25,27 +37,50 @@ bool isSystemFile(const String& filename) {
     return false;
 }
 
-// ==================== Display Error Message (FIXED) ====================
+// ==================== Display Error Message ====================
 void displayErrorScreen(const String& title, const String& message) {
-    // Полная очистка экрана черным цветом
     gfx.fillScreen(BLACK);
     
-    // Отображаем заголовок
     gfx.setCursor(140, 350);
     gfx.setTextSize(2);
     gfx.setTextColor(RED);
     gfx.print(title);
     
-    // Отображаем сообщение
     gfx.setCursor(100, 400);
     gfx.setTextSize(1);
     gfx.setTextColor(WHITE);
     gfx.print(message);
     
-    // Также отображаем инструкцию
     gfx.setCursor(100, 450);
     gfx.setTextSize(1);
     gfx.print("Restart device to retry");
+}
+
+// ==================== Show Interval Message ====================
+void showIntervalMessage() {
+    // Временное сообщение поверх изображения
+    gfx.fillRect(0, 0, 480, 50, BLACK);
+    gfx.setCursor(10, 10);
+    gfx.setTextSize(2);
+    gfx.setTextColor(CYAN);
+    gfx.print("Interval: ");
+    gfx.print(slideshowInterval / 1000);
+    gfx.print(" sec");
+    
+    delay(2000);
+    
+    // Перерисовываем изображение
+    if (!imageFiles.empty()) {
+        displayImage(currentImageIndex);
+    }
+}
+
+// ==================== Change Interval ====================
+void changeInterval() {
+    currentIntervalIndex = (currentIntervalIndex + 1) % (sizeof(intervals) / sizeof(intervals[0]));
+    slideshowInterval = intervals[currentIntervalIndex];
+    showIntervalMessage();
+    lastImageChange = millis();
 }
 
 // ==================== SD Card Initialization ====================
@@ -127,19 +162,16 @@ void findImageFiles() {
 void initRandomSlideshow() {
     if (imageFiles.empty()) return;
     
-    // Заполняем shuffledIndices числами от 0 до imageFiles.size()-1
     shuffledIndices.clear();
     for (int i = 0; i < imageFiles.size(); i++) {
         shuffledIndices.push_back(i);
     }
     
-    // Перемешиваем индексы для случайного порядка
     for (int i = shuffledIndices.size() - 1; i > 0; i--) {
-        int j = random(0, i + 1);  // случайное число от 0 до i включительно
+        int j = random(0, i + 1);
         std::swap(shuffledIndices[i], shuffledIndices[j]);
     }
     
-    // Сбрасываем индекс для перемешанного списка
     currentShuffleIndex = 0;
     
     Serial.println("Random slideshow order initialized");
@@ -149,21 +181,16 @@ void initRandomSlideshow() {
 int getNextRandomImage() {
     if (imageFiles.empty()) return 0;
     
-    // Получаем текущий индекс из перемешанного списка
     int imageIndex = shuffledIndices[currentShuffleIndex];
     
-    // Увеличиваем индекс для следующего вызова
     currentShuffleIndex++;
     
-    // Если дошли до конца списка, перемешиваем заново
     if (currentShuffleIndex >= shuffledIndices.size()) {
-        // Перемешиваем список заново для нового цикла
         for (int i = shuffledIndices.size() - 1; i > 0; i--) {
             int j = random(0, i + 1);
             std::swap(shuffledIndices[i], shuffledIndices[j]);
         }
         
-        // Сбрасываем индекс и начинаем заново
         currentShuffleIndex = 0;
         
         Serial.println("Reshuffled image order for new cycle");
@@ -206,6 +233,21 @@ void displayImage(int index) {
     lastImageChange = millis();
 }
 
+// ==================== Check Touch Input ====================
+void processTouchInput() {
+    uint16_t x, y;
+    
+    // Проверяем касание
+    if (check_touch(&x, &y)) {
+        // Защита от дребезга
+        if (millis() - lastTouchTime > TOUCH_DEBOUNCE) {
+            // Обычное нажатие - меняем интервал
+            changeInterval();
+            lastTouchTime = millis();
+        }
+    }
+}
+
 // ==================== Setup ====================
 void setup() {
     Serial.begin(115200);
@@ -213,20 +255,19 @@ void setup() {
     
     Serial.println("\n" + String(60, '='));
     Serial.println("ESP32 Photo Frame - RANDOM SLIDESHOW");
+    Serial.println("Tap screen to change interval");
     Serial.println(String(60, '='));
     
-    // Инициализация генератора случайных чисел
-    // Используем аналоговый шум с неподключенного пина для лучшей случайности
     randomSeed(analogRead(0));
     
     // Инициализация дисплея
     setup_display();
     
-    // Устанавливаем портретный режим
+    // Установка портретного режима
     gfx.setRotation(1);
     ts.setRotation(1);
     
-    // Очищаем экран черным цветом
+    // Очищаем экран
     gfx.fillScreen(BLACK);
     
     // Инициализация SD карты
@@ -238,13 +279,14 @@ void setup() {
             // Инициализация случайного порядка слайдшоу
             initRandomSlideshow();
             
-            // Показываем первое случайное изображение и УВЕЛИЧИВАЕМ индекс
+            // Показываем первое случайное изображение
             int firstImageIndex = shuffledIndices[currentShuffleIndex];
             displayImage(firstImageIndex);
-            currentShuffleIndex++;  // Увеличиваем индекс, чтобы следующее изображение было другим
+            currentShuffleIndex++;
             
             Serial.println("\nRandom slideshow started!");
-            Serial.printf("Interval: %d seconds\n", SLIDESHOW_INTERVAL / 1000);
+            Serial.printf("Initial interval: %d seconds\n", slideshowInterval / 1000);
+            Serial.printf("Available intervals: 3, 5, 10, 15, 30, 60 seconds\n");
             Serial.printf("Total images: %d\n", imageFiles.size());
         } else {
             // Нет изображений
@@ -252,7 +294,6 @@ void setup() {
             displayErrorScreen("NO IMAGES", "Add JPG files to SD card");
             Serial.println("\nERROR: No JPEG images found on SD card!");
             
-            // Бесконечный цикл при ошибке
             while (fatalError) {
                 delay(100);
             }
@@ -263,7 +304,6 @@ void setup() {
         displayErrorScreen("SD CARD ERROR", "Insert card with images");
         Serial.println("\nERROR: SD card initialization failed!");
         
-        // Бесконечный цикл при ошибке
         while (fatalError) {
             delay(100);
         }
@@ -272,19 +312,17 @@ void setup() {
 
 // ==================== Loop ====================
 void loop() {
-    // Если фатальная ошибка - не выполняем loop_display
     if (fatalError) {
         delay(100);
         return;
     }
     
-    // Обработка LVGL
-    // loop_display();
+    // Обработка сенсорного ввода
+    processTouchInput();
     
-    // Автоматическое случайное слайд-шоу
+    // Автоматическое слайд-шоу
     if (!imageFiles.empty()) {
-        if (millis() - lastImageChange >= SLIDESHOW_INTERVAL) {
-            // Получаем следующий случайный индекс
+        if (millis() - lastImageChange >= slideshowInterval) {
             int nextImageIndex = getNextRandomImage();
             displayImage(nextImageIndex);
         }
