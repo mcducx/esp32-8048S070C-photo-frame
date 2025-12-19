@@ -14,14 +14,14 @@ int currentImageIndex = 0;
 int currentShuffleIndex = 0;
 unsigned long lastImageChange = 0;
 
-// Интервалы для слайд-шоу
+// Slideshow intervals
 const unsigned long intervals[] = {3000, 5000, 10000, 15000, 30000, 60000, 120000};
 int currentIntervalIndex = 2;
 unsigned long slideshowInterval = intervals[currentIntervalIndex];
 
 bool fatalError = false;
 unsigned long lastTouchTime = 0;
-const unsigned long TOUCH_DEBOUNCE = 50; // 50 мс для защиты от дребезга
+const unsigned long TOUCH_DEBOUNCE = 50; // 50 ms debounce delay
 
 // ==================== Forward Declarations ====================
 void displayImage(int index);
@@ -58,7 +58,7 @@ void displayErrorScreen(const String& title, const String& message) {
 
 // ==================== Show Interval Message ====================
 void showIntervalMessage() {
-    // Временное сообщение поверх изображения
+    // Temporary message overlaid on the image
     gfx.fillRect(0, 0, 480, 50, BLACK);
     gfx.setCursor(10, 10);
     gfx.setTextSize(2);
@@ -69,7 +69,7 @@ void showIntervalMessage() {
     
     delay(2000);
     
-    // Перерисовываем изображение
+    // Redraw the image
     if (!imageFiles.empty()) {
         displayImage(currentImageIndex);
     }
@@ -237,11 +237,11 @@ void displayImage(int index) {
 void processTouchInput() {
     uint16_t x, y;
     
-    // Проверяем касание
+    // Check for touch
     if (check_touch(&x, &y)) {
-        // Защита от дребезга
+        // Debounce protection
         if (millis() - lastTouchTime > TOUCH_DEBOUNCE) {
-            // Обычное нажатие - меняем интервал
+            // Normal touch - change interval
             changeInterval();
             lastTouchTime = millis();
         }
@@ -260,26 +260,26 @@ void setup() {
     
     randomSeed(analogRead(0));
     
-    // Инициализация дисплея
+    // Display initialization
     setup_display();
     
-    // Установка портретного режима
+    // Set portrait mode
     gfx.setRotation(1);
     ts.setRotation(1);
     
-    // Очищаем экран
+    // Clear screen
     gfx.fillScreen(BLACK);
     
-    // Инициализация SD карты
+    // SD card initialization
     if (initSDCard()) {
-        // Поиск изображений
+        // Find images
         findImageFiles();
         
         if (!imageFiles.empty()) {
-            // Инициализация случайного порядка слайдшоу
+            // Initialize random slideshow order
             initRandomSlideshow();
             
-            // Показываем первое случайное изображение
+            // Show first random image
             int firstImageIndex = shuffledIndices[currentShuffleIndex];
             displayImage(firstImageIndex);
             currentShuffleIndex++;
@@ -289,7 +289,7 @@ void setup() {
             Serial.printf("Available intervals: 3, 5, 10, 15, 30, 60 seconds\n");
             Serial.printf("Total images: %d\n", imageFiles.size());
         } else {
-            // Нет изображений
+            // No images found
             fatalError = true;
             displayErrorScreen("NO IMAGES", "Add JPG files to SD card");
             Serial.println("\nERROR: No JPEG images found on SD card!");
@@ -299,7 +299,7 @@ void setup() {
             }
         }
     } else {
-        // Ошибка SD карты
+        // SD card error
         fatalError = true;
         displayErrorScreen("SD CARD ERROR", "Insert card with images");
         Serial.println("\nERROR: SD card initialization failed!");
@@ -317,10 +317,10 @@ void loop() {
         return;
     }
     
-    // Обработка сенсорного ввода
+    // Process touch input
     processTouchInput();
     
-    // Автоматическое слайд-шоу
+    // Automatic slideshow
     if (!imageFiles.empty()) {
         if (millis() - lastImageChange >= slideshowInterval) {
             int nextImageIndex = getNextRandomImage();

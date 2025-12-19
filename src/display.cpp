@@ -27,7 +27,7 @@ bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) 
         w = (uint16_t)((int16_t)gfx.width() - x);
     }
     
-    // Проверка на корректность параметров
+    // Validate parameter correctness
     if (x < 0 || y < 0 || w == 0 || h == 0) {
         return 0;
     }
@@ -51,7 +51,7 @@ bool check_touch(uint16_t *x, uint16_t *y) {
 
 // ==================== Display Setup ====================
 void setup_display() {
-    // Проверяем, инициализирован ли Serial
+    // Check if Serial is initialized
     if (!Serial) {
         Serial.begin(115200);
         delay(100);
@@ -61,8 +61,8 @@ void setup_display() {
     
     // Initialize display
     gfx.begin();
-    // Устанавливаем портретный режим по умолчанию
-    gfx.setRotation(1);  // 90 градусов для портретного режима (480x800)
+    // Set default portrait mode
+    gfx.setRotation(1);  // 90 degrees for portrait mode (480x800)
     
     // Backlight
     pinMode(TFT_BL, OUTPUT);
