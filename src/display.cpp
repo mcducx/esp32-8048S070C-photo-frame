@@ -96,8 +96,6 @@ void setup_display() {
     
     // Initialize display
     gfx.begin();
-    gfx.fillScreen(BLACK);
-    gfx.setTextColor(WHITE);
     // Устанавливаем портретный режим по умолчанию
     gfx.setRotation(1);  // 90 градусов для портретного режима (480x800)
     
