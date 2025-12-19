@@ -9,7 +9,9 @@
 // ==================== Global Variables ====================
 SPIClass sdSPI = SPIClass(HSPI);
 std::vector<String> imageFiles;
+std::vector<int> shuffledIndices;  // Для случайного порядка
 int currentImageIndex = 0;
+int currentShuffleIndex = 0;  // Теперь это глобальная переменная
 unsigned long lastImageChange = 0;
 const unsigned long SLIDESHOW_INTERVAL = 10000;
 bool fatalError = false; // Флаг фатальной ошибки
@@ -118,11 +120,56 @@ void findImageFiles() {
     
     root.close();
     
-    std::sort(imageFiles.begin(), imageFiles.end(), [](const String& a, const String& b) {
-        return a < b;
-    });
-    
     Serial.printf("Found %d images\n", imageFiles.size());
+}
+
+// ==================== Initialize Random Slideshow Order ====================
+void initRandomSlideshow() {
+    if (imageFiles.empty()) return;
+    
+    // Заполняем shuffledIndices числами от 0 до imageFiles.size()-1
+    shuffledIndices.clear();
+    for (int i = 0; i < imageFiles.size(); i++) {
+        shuffledIndices.push_back(i);
+    }
+    
+    // Перемешиваем индексы для случайного порядка
+    for (int i = shuffledIndices.size() - 1; i > 0; i--) {
+        int j = random(0, i + 1);  // случайное число от 0 до i включительно
+        std::swap(shuffledIndices[i], shuffledIndices[j]);
+    }
+    
+    // Сбрасываем индекс для перемешанного списка
+    currentShuffleIndex = 0;
+    
+    Serial.println("Random slideshow order initialized");
+}
+
+// ==================== Get Next Random Image Index ====================
+int getNextRandomImage() {
+    if (imageFiles.empty()) return 0;
+    
+    // Получаем текущий индекс из перемешанного списка
+    int imageIndex = shuffledIndices[currentShuffleIndex];
+    
+    // Увеличиваем индекс для следующего вызова
+    currentShuffleIndex++;
+    
+    // Если дошли до конца списка, перемешиваем заново
+    if (currentShuffleIndex >= shuffledIndices.size()) {
+        // Перемешиваем список заново для нового цикла
+        for (int i = shuffledIndices.size() - 1; i > 0; i--) {
+            int j = random(0, i + 1);
+            std::swap(shuffledIndices[i], shuffledIndices[j]);
+        }
+        
+        // Сбрасываем индекс и начинаем заново
+        currentShuffleIndex = 0;
+        
+        Serial.println("Reshuffled image order for new cycle");
+    }
+    
+    return imageIndex;
 }
 
 // ==================== Display Image ====================
@@ -165,8 +212,12 @@ void setup() {
     delay(1000);
     
     Serial.println("\n" + String(60, '='));
-    Serial.println("ESP32 Photo Frame");
+    Serial.println("ESP32 Photo Frame - RANDOM SLIDESHOW");
     Serial.println(String(60, '='));
+    
+    // Инициализация генератора случайных чисел
+    // Используем аналоговый шум с неподключенного пина для лучшей случайности
+    randomSeed(analogRead(0));
     
     // Инициализация дисплея
     setup_display();
@@ -184,10 +235,17 @@ void setup() {
         findImageFiles();
         
         if (!imageFiles.empty()) {
-            // Показываем первое изображение
-            displayImage(0);
-            Serial.println("\nSlideshow started!");
+            // Инициализация случайного порядка слайдшоу
+            initRandomSlideshow();
+            
+            // Показываем первое случайное изображение и УВЕЛИЧИВАЕМ индекс
+            int firstImageIndex = shuffledIndices[currentShuffleIndex];
+            displayImage(firstImageIndex);
+            currentShuffleIndex++;  // Увеличиваем индекс, чтобы следующее изображение было другим
+            
+            Serial.println("\nRandom slideshow started!");
             Serial.printf("Interval: %d seconds\n", SLIDESHOW_INTERVAL / 1000);
+            Serial.printf("Total images: %d\n", imageFiles.size());
         } else {
             // Нет изображений
             fatalError = true;
@@ -221,13 +279,14 @@ void loop() {
     }
     
     // Обработка LVGL
-    //loop_display();
+    // loop_display();
     
-    // Автоматическое слайд-шоу
+    // Автоматическое случайное слайд-шоу
     if (!imageFiles.empty()) {
         if (millis() - lastImageChange >= SLIDESHOW_INTERVAL) {
-            currentImageIndex = (currentImageIndex + 1) % imageFiles.size();
-            displayImage(currentImageIndex);
+            // Получаем следующий случайный индекс
+            int nextImageIndex = getNextRandomImage();
+            displayImage(nextImageIndex);
         }
     }
     
