@@ -13,8 +13,8 @@ Arduino_ESP32RGBPanel rgbpanel(
     15 /* B0 */, 7 /* B1 */, 6 /* B2 */, 5 /* B3 */, 4 /* B4 */,
     0 /* hsync_polarity */, 20 /* hsync_front_porch */, 30 /* hsync_pulse_width */, 16 /* hsync_back_porch */,
     0 /* vsync_polarity */, 22 /* vsync_front_porch */, 13 /* vsync_pulse_width */, 10 /* vsync_back_porch */,
-    true /* pclk_active_neg */);
-
+    true /* pclk_active_neg */, 16000000 /* prefer_speed */, false /* useBigEndian */);
+    
 Arduino_RGB_Display gfx(800, 480, &rgbpanel, 0, true);
 
 static uint32_t screenWidth;
