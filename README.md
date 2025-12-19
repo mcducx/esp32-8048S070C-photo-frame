@@ -1,78 +1,78 @@
 # ESP32 Portrait Photo Frame
 
-Простая цифровая фоторамка на ESP32 с дисплеем 800×480, работающая в портретном режиме (480×800) с автоматическим слайд-шоу.
+A simple digital photo frame based on ESP32 with an 800×480 display, operating in portrait mode (480×800) with automatic slideshow.
 
-## ✨ Основные особенности
+## ✨ Key Features
 
-- **Портретный режим**: Дисплей повернут на 90° (480×800 пикселей)
-- **Автоматическое слайд-шоу**: Смена изображений каждые 10 секунд
-- **Центрирование изображений**: Все фото всегда по центру экрана
-- **Минималистичный интерфейс**: Нет лишних элементов, только изображения
-- **Поддержка SD карты**: Чтение JPEG файлов с карты памяти
+- **Portrait Mode**: Display rotated 90° (480×800 pixels)
+- **Automatic Slideshow**: Image change every 10 seconds
+- **Image Centering**: All photos are always centered on the screen
+- **Minimalist Interface**: No unnecessary elements, only images
+- **SD Card Support**: Read JPEG files from a memory card
 
-## 📋 Требования
+## 📋 Requirements
 
-### Аппаратное обеспечение
-- Плата ESP32-8048S070C
-- Дисплей 800×480 с RGB интерфейсом
-- Сенсорный экран GT911 (опционально, не используется в текущей версии)
-- SD карта (формат FAT32)
+### Hardware
+- ESP32-8048S070C board
+- 800×480 display with RGB interface
+- GT911 touchscreen (optional, not used in current version)
+- SD card (FAT32 format)
 
-### Программное обеспечение
+### Software
 - PlatformIO
 - Arduino framework
-- Библиотеки (указываются в `platformio.ini`)
+- Libraries (specified in `platformio.ini`)
 
-## ⚙️ Настройка
+## ⚙️ Setup
 
-1. **Подготовка SD карты**:
-   - Отформатируйте в FAT32
-   - Воспользуйтесь моим конвертером https://github.com/mcducx/converter-photo-esp32-8048S070C-photo-frame
-   - Добавьте JPEG файлы в корень
-   - Оптимальный размер изображений: 480×800 пикселей
+1. **Prepare the SD Card**:
+   - Format to FAT32
+   - Use my converter: https://github.com/mcducx/converter-photo-esp32-8048S070C-photo-frame
+   - Add JPEG files to the root directory
+   - Optimal image size: 480×800 pixels
 
-2. **Настройка параметров**:
-   - Интервал слайд-шоу: измените `SLIDESHOW_INTERVAL` в `main.cpp`
-   - Ориентация дисплея: `gfx.setRotation(1)` в `setup_display()`
+2. **Configure Parameters**:
+   - Slideshow interval: modify `SLIDESHOW_INTERVAL` in `main.cpp`
+   - Display orientation: `gfx.setRotation(1)` in `setup_display()`
 
-## 🚀 Сборка и загрузка
+## 🚀 Build and Upload
 
-1. Клонируйте репозиторий
-2. Откройте проект в PlatformIO
-3. Подключите ESP32 к компьютеру
-4. Выполните:
+1. Clone the repository
+2. Open the project in PlatformIO
+3. Connect the ESP32 to your computer
+4. Execute:
 ```bash
 pio run --target upload
 ```
-5. Вставьте SD карту с изображениями
-6. Перезагрузите устройство
+5. Insert the SD card with images
+6. Reset the device
 
-## 📁 Структура проекта
+## 📁 Project Structure
 
 ```
 src/
-├── main.cpp          # Основная логика слайд-шоу
-├── display.cpp       # Драйвер дисплея и LVGL
-├── display.h         # Заголовочный файл дисплея
-└── config.h          # Конфигурация пинов
-platformio.ini        # Конфигурация PlatformIO
+├── main.cpp          # Main slideshow logic
+├── display.cpp       # Display driver and LVGL
+├── display.h         # Display header file
+└── config.h          # Pin configuration
+platformio.ini        # PlatformIO configuration
 ```
 
-## 🛠️ Используемые библиотеки
+## 🛠️ Used Libraries
 
-- **LVGL** (v9.2.2): Графическая библиотека
-- **Arduino_GFX**: Драйвер дисплея
-- **TJpg_Decoder**: Декодер JPEG
-- **SD**: Работа с SD картой
-- **TAMC_GT911**: Драйвер тачскрина
+- **LVGL** (v9.2.2): Graphics library
+- **Arduino_GFX**: Display driver
+- **TJpg_Decoder**: JPEG decoder
+- **SD**: SD card support
+- **TAMC_GT911**: Touchscreen driver
 
-## 📄 Лицензия
+## 📄 License
 
 MIT License
 
-## 🙏 Благодарности
+## 🙏 Acknowledgments
 
-Проект основан на библиотеках Arduino_GFX и LVGL
+Project based on Arduino_GFX and LVGL libraries
 
 # Resolving the Build Error
 
@@ -89,5 +89,9 @@ When you first compile the project, you may encounter the following error:
 4. Rename the copied file to `lv_conf.h`.
 
 After completing these steps, you should have the file located at:  
-`.pio/libdeps/esp32-8048S070C/lv_conf.h`  
+`.pio/libdeps/esp32-8048S070C/lv_conf.h`
 
+## Screenshot
+
+![Application Screenshot](./3d_model/screenshot1.jpg)
+![Application Screenshot](./3d_model/screenshot2.jpg)
