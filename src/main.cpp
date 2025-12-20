@@ -3,14 +3,12 @@
 #include <SD.h>
 #include <SPI.h>
 #include <TJpg_Decoder.h>
-#include <EEPROM.h>
 #include <vector>
 #include <algorithm>
 
-// ==================== EEPROM Configuration ====================
-#define EEPROM_SIZE 64
-#define INTERVAL_EEPROM_ADDR 0
+// ==================== Configuration ====================
 #define INTERVAL_DEFAULT_INDEX 2
+#define INTERVAL_FILENAME "/interval.txt"
 
 // ==================== Button Configuration ====================
 #define BOOT_BUTTON_PIN 0  // GPIO0 - кнопка BOOT на ESP32
@@ -51,45 +49,76 @@ LoadingType currentLoadingType = LOADING_BAR;
 void displayImage(int index);
 void showIntervalMessage();
 void changeInterval();
-void saveIntervalToEEPROM();
-void loadIntervalFromEEPROM();
+void saveIntervalToSD();
+void loadIntervalFromSD();
 void showLoadingScreen(const String& message = "Loading...");
 void updateLoadingProgress(float progress, const String& message = "");
 void hideLoadingScreen();
 void processButtonInput();
 void hideMessage();
 
-// ==================== EEPROM Functions ====================
-void saveIntervalToEEPROM() {
-    EEPROM.write(INTERVAL_EEPROM_ADDR, currentIntervalIndex);
-    if (EEPROM.commit()) {
-        Serial.printf("Interval saved to EEPROM: %d (index), %lu ms\n", 
+// ==================== SD Card Interval Functions ====================
+void saveIntervalToSD() {
+    if (!SD.exists("/")) {
+        Serial.println("SD card not available for saving interval");
+        return;
+    }
+    
+    File intervalFile = SD.open(INTERVAL_FILENAME, FILE_WRITE);
+    if (intervalFile) {
+        intervalFile.print(currentIntervalIndex);
+        intervalFile.close();
+        Serial.printf("Interval saved to SD: %d (index), %lu ms\n", 
                       currentIntervalIndex, slideshowInterval);
     } else {
-        Serial.println("Failed to save interval to EEPROM!");
+        Serial.println("Failed to save interval to SD card!");
     }
 }
 
-void loadIntervalFromEEPROM() {
-    EEPROM.begin(EEPROM_SIZE);
-    
-    // Read saved interval index from EEPROM
-    int savedIndex = EEPROM.read(INTERVAL_EEPROM_ADDR);
-    
-    // Validate the saved index
-    if (savedIndex >= 0 && savedIndex < (sizeof(intervals) / sizeof(intervals[0]))) {
-        currentIntervalIndex = savedIndex;
-        slideshowInterval = intervals[currentIntervalIndex];
-        Serial.printf("Interval loaded from EEPROM: %d (index), %lu ms\n", 
-                      currentIntervalIndex, slideshowInterval);
-    } else {
-        // Invalid or first run - use default
+void loadIntervalFromSD() {
+    if (!SD.exists("/")) {
+        Serial.println("SD card not available for loading interval");
         currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
         slideshowInterval = intervals[currentIntervalIndex];
-        Serial.printf("Using default interval: %d (index), %lu ms\n", 
+        return;
+    }
+    
+    if (SD.exists(INTERVAL_FILENAME)) {
+        File intervalFile = SD.open(INTERVAL_FILENAME, FILE_READ);
+        if (intervalFile) {
+            String intervalStr = intervalFile.readString();
+            intervalFile.close();
+            
+            int savedIndex = intervalStr.toInt();
+            
+            // Validate the saved index
+            if (savedIndex >= 0 && savedIndex < (sizeof(intervals) / sizeof(intervals[0]))) {
+                currentIntervalIndex = savedIndex;
+                slideshowInterval = intervals[currentIntervalIndex];
+                Serial.printf("Interval loaded from SD: %d (index), %lu ms\n", 
+                              currentIntervalIndex, slideshowInterval);
+            } else {
+                // Invalid data - use default
+                currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
+                slideshowInterval = intervals[currentIntervalIndex];
+                Serial.printf("Invalid interval data, using default: %d (index), %lu ms\n", 
+                              currentIntervalIndex, slideshowInterval);
+                saveIntervalToSD(); // Save default
+            }
+        } else {
+            currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
+            slideshowInterval = intervals[currentIntervalIndex];
+            Serial.printf("Failed to read interval file, using default: %d (index), %lu ms\n", 
+                          currentIntervalIndex, slideshowInterval);
+            saveIntervalToSD(); // Create with default
+        }
+    } else {
+        // File doesn't exist - use default and create file
+        currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
+        slideshowInterval = intervals[currentIntervalIndex];
+        Serial.printf("Interval file not found, using default: %d (index), %lu ms\n", 
                       currentIntervalIndex, slideshowInterval);
-        // Save default to EEPROM
-        saveIntervalToEEPROM();
+        saveIntervalToSD(); // Create with default
     }
 }
 
@@ -280,8 +309,8 @@ void changeInterval() {
     currentIntervalIndex = (currentIntervalIndex + 1) % (sizeof(intervals) / sizeof(intervals[0]));
     slideshowInterval = intervals[currentIntervalIndex];
     
-    // Save new interval to EEPROM
-    saveIntervalToEEPROM();
+    // Save new interval to SD card
+    saveIntervalToSD();
     
     // Show message
     showIntervalMessage();
@@ -349,6 +378,9 @@ bool initSDCard() {
     
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
     Serial.printf("SD Card Size: %lluMB\n", cardSize);
+    
+    // Load interval from SD card after SD is initialized
+    loadIntervalFromSD();
     
     return true;
 }
@@ -493,15 +525,13 @@ void setup() {
     Serial.println("\n" + String(60, '='));
     Serial.println("ESP32 Photo Frame - RANDOM SLIDESHOW");
     Serial.println("Press BOOT button to change interval");
+    Serial.println("Interval saved to SD card (interval.txt)");
     Serial.println(String(60, '='));
     
     randomSeed(analogRead(0));
     
     // Initialize BOOT button
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
-    
-    // Load saved interval from EEPROM
-    loadIntervalFromEEPROM();
     
     // Display initialization
     setup_display();
