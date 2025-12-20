@@ -14,10 +14,14 @@
 
 // ==================== Button Configuration ====================
 #define BOOT_BUTTON_PIN 0  // GPIO0 - кнопка BOOT на ESP32
-bool buttonPressed = false;
 bool lastButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-const unsigned long DEBOUNCE_DELAY = 50;
+unsigned long lastButtonPress = 0;
+const unsigned long BUTTON_COOLDOWN = 300;  // 300 мс между нажатиями
+
+// ==================== Message Display ====================
+unsigned long messageStartTime = 0;
+bool showingMessage = false;
+const unsigned long MESSAGE_DURATION = 1000;  // Сообщение показывается 1 секунду
 
 // ==================== Global Variables ====================
 SPIClass sdSPI = SPIClass(HSPI);
@@ -53,6 +57,7 @@ void showLoadingScreen(const String& message = "Loading...");
 void updateLoadingProgress(float progress, const String& message = "");
 void hideLoadingScreen();
 void processButtonInput();
+void hideMessage();
 
 // ==================== EEPROM Functions ====================
 void saveIntervalToEEPROM() {
@@ -245,7 +250,7 @@ void displayErrorScreen(const String& title, const String& message) {
 
 // ==================== Show Interval Message ====================
 void showIntervalMessage() {
-    // Temporary message overlaid on the image
+    // Draw message overlay
     gfx.fillRect(0, 0, 480, 50, BLACK);
     gfx.setCursor(10, 10);
     gfx.setTextSize(2);
@@ -254,11 +259,19 @@ void showIntervalMessage() {
     gfx.print(slideshowInterval / 1000);
     gfx.print(" sec");
     
-    delay(2000);
-    
-    // Redraw the image
-    if (!imageFiles.empty()) {
-        displayImage(currentImageIndex);
+    // Set message display state
+    showingMessage = true;
+    messageStartTime = millis();
+}
+
+// ==================== Hide Message ====================
+void hideMessage() {
+    if (showingMessage) {
+        // Redraw current image to remove message
+        if (!imageFiles.empty()) {
+            displayImage(currentImageIndex);
+        }
+        showingMessage = false;
     }
 }
 
@@ -270,38 +283,39 @@ void changeInterval() {
     // Save new interval to EEPROM
     saveIntervalToEEPROM();
     
+    // Show message
     showIntervalMessage();
+    
+    // Reset slideshow timer
     lastImageChange = millis();
+    
+    Serial.printf("Interval changed to: %lu ms\n", slideshowInterval);
 }
 
 // ==================== Process Button Input ====================
 void processButtonInput() {
-    int reading = digitalRead(BOOT_BUTTON_PIN);
+    int currentButtonState = digitalRead(BOOT_BUTTON_PIN);
+    unsigned long now = millis();
     
-    // Check for button state change
-    if (reading != lastButtonState) {
-        lastDebounceTime = millis();
-    }
-    
-    // Debounce the button
-    if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
-        // If button state has changed
-        if (reading == LOW && !buttonPressed) {
-            buttonPressed = true;
-            Serial.println("Button pressed");
-        }
-        
-        // If button is released
-        if (reading == HIGH && buttonPressed) {
-            buttonPressed = false;
-            
-            // Short press - change interval
-            Serial.println("Button released - changing interval");
-            changeInterval();
+    // Detect button press (LOW = pressed)
+    if (currentButtonState == LOW && lastButtonState == HIGH) {
+        // Simple debounce - check again after 10ms
+        delay(10);
+        if (digitalRead(BOOT_BUTTON_PIN) == LOW) {
+            // Prevent multiple rapid presses
+            if (now - lastButtonPress > BUTTON_COOLDOWN) {
+                lastButtonPress = now;
+                
+                // Immediately change interval
+                changeInterval();
+                
+                Serial.println("Button pressed - interval changed");
+            }
         }
     }
     
-    lastButtonState = reading;
+    // Update button state
+    lastButtonState = currentButtonState;
 }
 
 // ==================== SD Card Initialization ====================
@@ -564,13 +578,19 @@ void loop() {
     // Process button input
     processButtonInput();
     
-    // Automatic slideshow
-    if (!imageFiles.empty()) {
+    // Hide message after duration
+    if (showingMessage && (millis() - messageStartTime >= MESSAGE_DURATION)) {
+        hideMessage();
+    }
+    
+    // Automatic slideshow (only when not showing message)
+    if (!imageFiles.empty() && !showingMessage) {
         if (millis() - lastImageChange >= slideshowInterval) {
             int nextImageIndex = getNextRandomImage();
             displayImage(nextImageIndex);
         }
     }
     
+    // Small delay to prevent watchdog issues
     delay(10);
 }
