@@ -12,6 +12,13 @@
 #define INTERVAL_EEPROM_ADDR 0
 #define INTERVAL_DEFAULT_INDEX 2
 
+// ==================== Button Configuration ====================
+#define BOOT_BUTTON_PIN 0  // GPIO0 - кнопка BOOT на ESP32
+bool buttonPressed = false;
+bool lastButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long DEBOUNCE_DELAY = 50;
+
 // ==================== Global Variables ====================
 SPIClass sdSPI = SPIClass(HSPI);
 std::vector<String> imageFiles;
@@ -26,8 +33,6 @@ int currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
 unsigned long slideshowInterval = intervals[currentIntervalIndex];
 
 bool fatalError = false;
-unsigned long lastTouchTime = 0;
-const unsigned long TOUCH_DEBOUNCE = 50; // 50 ms debounce delay
 
 // Loading screen types
 enum LoadingType {
@@ -47,6 +52,7 @@ void loadIntervalFromEEPROM();
 void showLoadingScreen(const String& message = "Loading...");
 void updateLoadingProgress(float progress, const String& message = "");
 void hideLoadingScreen();
+void processButtonInput();
 
 // ==================== EEPROM Functions ====================
 void saveIntervalToEEPROM() {
@@ -268,6 +274,36 @@ void changeInterval() {
     lastImageChange = millis();
 }
 
+// ==================== Process Button Input ====================
+void processButtonInput() {
+    int reading = digitalRead(BOOT_BUTTON_PIN);
+    
+    // Check for button state change
+    if (reading != lastButtonState) {
+        lastDebounceTime = millis();
+    }
+    
+    // Debounce the button
+    if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
+        // If button state has changed
+        if (reading == LOW && !buttonPressed) {
+            buttonPressed = true;
+            Serial.println("Button pressed");
+        }
+        
+        // If button is released
+        if (reading == HIGH && buttonPressed) {
+            buttonPressed = false;
+            
+            // Short press - change interval
+            Serial.println("Button released - changing interval");
+            changeInterval();
+        }
+    }
+    
+    lastButtonState = reading;
+}
+
 // ==================== SD Card Initialization ====================
 bool initSDCard() {
     Serial.println("Initializing SD card...");
@@ -435,21 +471,6 @@ void displayImage(int index) {
     lastImageChange = millis();
 }
 
-// ==================== Check Touch Input ====================
-void processTouchInput() {
-    uint16_t x, y;
-    
-    // Check for touch
-    if (check_touch(&x, &y)) {
-        // Debounce protection
-        if (millis() - lastTouchTime > TOUCH_DEBOUNCE) {
-            // Normal touch - change interval
-            changeInterval();
-            lastTouchTime = millis();
-        }
-    }
-}
-
 // ==================== Setup ====================
 void setup() {
     Serial.begin(115200);
@@ -457,10 +478,13 @@ void setup() {
     
     Serial.println("\n" + String(60, '='));
     Serial.println("ESP32 Photo Frame - RANDOM SLIDESHOW");
-    Serial.println("Tap screen to change interval");
+    Serial.println("Press BOOT button to change interval");
     Serial.println(String(60, '='));
     
     randomSeed(analogRead(0));
+    
+    // Initialize BOOT button
+    pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
     
     // Load saved interval from EEPROM
     loadIntervalFromEEPROM();
@@ -468,9 +492,8 @@ void setup() {
     // Display initialization
     setup_display();
     
-    // Set portrait mode
+    // Set portrait mode (only display, touch not used)
     gfx.setRotation(1);
-    ts.setRotation(1);
     
     // Show loading screen immediately
     showLoadingScreen("Starting...");
@@ -506,6 +529,7 @@ void setup() {
             Serial.printf("Saved interval index: %d\n", currentIntervalIndex);
             Serial.printf("Available intervals: 3, 5, 10, 15, 30, 60, 120 seconds\n");
             Serial.printf("Total images: %d\n", imageFiles.size());
+            Serial.println("Press BOOT button to change slideshow interval");
         } else {
             // No images found
             fatalError = true;
@@ -537,8 +561,8 @@ void loop() {
         return;
     }
     
-    // Process touch input
-    processTouchInput();
+    // Process button input
+    processButtonInput();
     
     // Automatic slideshow
     if (!imageFiles.empty()) {
