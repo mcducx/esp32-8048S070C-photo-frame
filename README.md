@@ -1,6 +1,7 @@
 # ESP32 Portrait Photo Frame
 
 A simple digital photo frame based on ESP32 with an 800×480 display, operating in portrait mode (480×800) with automatic slideshow.
+Purchase link: https://www.aliexpress.com/item/1005008069223989.html?spm=a2g0o.tesla.0.0.5146iGumiGumwB
 
 ## ✨ Key Features
 
