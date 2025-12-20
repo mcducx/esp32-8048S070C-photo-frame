@@ -5,7 +5,7 @@ Purchase link: https://www.aliexpress.com/item/1005008069223989.html?spm=a2g0o.t
 
 ## ✨ Key Features
 
-- **Automatic Slideshow**: The image change timer can be changed by touching the screen.
+- **Automatic Slideshow**: The image change timer can be changed by clicking the boot button.
 - **Image Centering**: All photos are always centered on the screen
 - **Minimalist Interface**: No unnecessary elements, only images
 - **SD Card Support**: Read JPEG files from a memory card

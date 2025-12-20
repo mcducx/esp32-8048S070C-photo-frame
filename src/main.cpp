@@ -166,8 +166,12 @@ void updateLoadingProgress(float progress, const String& message) {
     static int dotCount = 0;
     
     // Throttle updates for smoother animation
-    if (millis() - lastUpdate < 100 && progress < 1.0) return;
+    if (millis() - lastUpdate < 50 && progress < 1.0) return;
     lastUpdate = millis();
+    
+    // Clamp progress between 0 and 1
+    if (progress < 0.0) progress = 0.0;
+    if (progress > 1.0) progress = 1.0;
     
     int centerX = 240;
     int centerY = 420;
@@ -208,8 +212,14 @@ void updateLoadingProgress(float progress, const String& message) {
             
         case LOADING_BAR: {
             int barWidth = (int)(progress * 260);
-            // Update progress bar
+            // Clear progress bar area
+            gfx.fillRect(102, 397, 260, 16, BLACK);
+            
+            // Draw progress bar
             gfx.fillRect(102, 397, barWidth, 16, GREEN);
+            
+            // Draw bar border
+            gfx.drawRect(100, 395, 280, 20, WHITE);
             
             // Show percentage inside bar if space
             if (barWidth > 40) {
@@ -350,7 +360,7 @@ void processButtonInput() {
 // ==================== SD Card Initialization ====================
 bool initSDCard() {
     Serial.println("Initializing SD card...");
-    updateLoadingProgress(0.1, "Initializing SD card...");
+    updateLoadingProgress(0.0, "Initializing SD card...");
     
     sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
     delay(100);
@@ -360,7 +370,7 @@ bool initSDCard() {
         return false;
     }
     
-    updateLoadingProgress(0.3, "SD card detected");
+    updateLoadingProgress(0.1, "SD card detected");
     
     uint8_t cardType = SD.cardType();
     if (cardType == CARD_NONE) {
@@ -380,37 +390,27 @@ bool initSDCard() {
     Serial.printf("SD Card Size: %lluMB\n", cardSize);
     
     // Load interval from SD card after SD is initialized
+    updateLoadingProgress(0.15, "Loading settings...");
     loadIntervalFromSD();
     
     return true;
 }
 
 // ==================== Find All Image Files ====================
-void findImageFiles() {
-    Serial.println("Scanning for images...");
-    updateLoadingProgress(0.4, "Scanning for images...");
+int countTotalFiles() {
+    int totalFiles = 0;
     
     File root = SD.open("/");
     if (!root) {
-        Serial.println("Cannot open root directory");
-        return;
+        Serial.println("Cannot open root directory for counting");
+        return 0;
     }
-    
-    int totalFiles = 0;
-    int imageCount = 0;
     
     while (true) {
         File entry = root.openNextFile();
         if (!entry) break;
         
         String filename = entry.name();
-        totalFiles++;
-        
-        // Update progress every 10 files
-        if (totalFiles % 10 == 0) {
-            updateLoadingProgress(0.4 + (totalFiles * 0.3 / 1000.0), 
-                                 "Scanning... Found " + String(imageCount) + " images");
-        }
         
         if (entry.isDirectory()) {
             entry.close();
@@ -420,6 +420,66 @@ void findImageFiles() {
         if (isSystemFile(filename)) {
             entry.close();
             continue;
+        }
+        
+        totalFiles++;
+        entry.close();
+    }
+    
+    root.close();
+    return totalFiles;
+}
+
+void findImageFiles() {
+    Serial.println("Scanning for images...");
+    
+    // Сначала подсчитаем общее количество файлов
+    updateLoadingProgress(0.2, "Counting files...");
+    int totalFiles = countTotalFiles();
+    
+    Serial.printf("Total non-system files to scan: %d\n", totalFiles);
+    
+    if (totalFiles == 0) {
+        updateLoadingProgress(1.0, "No files found");
+        return;
+    }
+    
+    // Теперь сканируем файлы с реальным прогрессом
+    updateLoadingProgress(0.2, "Scanning for images...");
+    
+    File root = SD.open("/");
+    if (!root) {
+        Serial.println("Cannot open root directory");
+        return;
+    }
+    
+    int processedFiles = 0;
+    int imageCount = 0;
+    
+    while (true) {
+        File entry = root.openNextFile();
+        if (!entry) break;
+        
+        String filename = entry.name();
+        
+        if (entry.isDirectory()) {
+            entry.close();
+            continue;
+        }
+        
+        if (isSystemFile(filename)) {
+            entry.close();
+            continue;
+        }
+        
+        processedFiles++;
+        
+        // Обновляем прогресс от 20% до 100% в зависимости от обработанных файлов
+        float progress = 0.2 + ((float)processedFiles / totalFiles) * 0.8;
+        
+        // Обновляем прогресс каждые 5 файлов или если это последний файл
+        if (processedFiles % 5 == 0 || processedFiles == totalFiles) {
+            updateLoadingProgress(progress, "Found: " + String(imageCount) + " images");
         }
         
         String ext = filename.substring(filename.lastIndexOf('.'));
@@ -438,13 +498,12 @@ void findImageFiles() {
     root.close();
     
     Serial.printf("Found %d images\n", imageFiles.size());
+    updateLoadingProgress(1.0, String(imageFiles.size()) + " images found");
 }
 
 // ==================== Initialize Random Slideshow Order ====================
 void initRandomSlideshow() {
     if (imageFiles.empty()) return;
-    
-    updateLoadingProgress(0.7, "Preparing slideshow...");
     
     shuffledIndices.clear();
     for (int i = 0; i < imageFiles.size(); i++) {
@@ -541,23 +600,18 @@ void setup() {
     
     // Show loading screen immediately
     showLoadingScreen("Starting...");
-    delay(500); // Brief pause to show loading screen
+    delay(300); // Brief pause to show loading screen
     
     // SD card initialization
     if (initSDCard()) {
-        updateLoadingProgress(0.5, "SD card ready");
-        
-        // Find images
+        // Find images with real progress from 0% to 100%
         findImageFiles();
         
         if (!imageFiles.empty()) {
-            updateLoadingProgress(0.8, String(imageFiles.size()) + " images found");
-            
             // Initialize random slideshow order
             initRandomSlideshow();
             
-            updateLoadingProgress(1.0, "Ready!");
-            delay(500); // Show completion briefly
+            delay(300); // Show completion briefly
             
             // Hide loading screen and show first image
             hideLoadingScreen();
