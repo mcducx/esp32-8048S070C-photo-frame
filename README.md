@@ -4,8 +4,7 @@ A simple digital photo frame based on ESP32 with an 800×480 display, operating 
 
 ## ✨ Key Features
 
-- **Portrait Mode**: Display rotated 90° (480×800 pixels)
-- **Automatic Slideshow**: Image change every 10 seconds
+- **Automatic Slideshow**: The image change timer can be changed by touching the screen.
 - **Image Centering**: All photos are always centered on the screen
 - **Minimalist Interface**: No unnecessary elements, only images
 - **SD Card Support**: Read JPEG files from a memory card
