@@ -3,8 +3,14 @@
 #include <SD.h>
 #include <SPI.h>
 #include <TJpg_Decoder.h>
+#include <EEPROM.h>
 #include <vector>
 #include <algorithm>
+
+// ==================== EEPROM Configuration ====================
+#define EEPROM_SIZE 64
+#define INTERVAL_EEPROM_ADDR 0
+#define INTERVAL_DEFAULT_INDEX 2
 
 // ==================== Global Variables ====================
 SPIClass sdSPI = SPIClass(HSPI);
@@ -16,7 +22,7 @@ unsigned long lastImageChange = 0;
 
 // Slideshow intervals
 const unsigned long intervals[] = {3000, 5000, 10000, 15000, 30000, 60000, 120000};
-int currentIntervalIndex = 2;
+int currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
 unsigned long slideshowInterval = intervals[currentIntervalIndex];
 
 bool fatalError = false;
@@ -36,9 +42,45 @@ LoadingType currentLoadingType = LOADING_BAR;
 void displayImage(int index);
 void showIntervalMessage();
 void changeInterval();
+void saveIntervalToEEPROM();
+void loadIntervalFromEEPROM();
 void showLoadingScreen(const String& message = "Loading...");
 void updateLoadingProgress(float progress, const String& message = "");
 void hideLoadingScreen();
+
+// ==================== EEPROM Functions ====================
+void saveIntervalToEEPROM() {
+    EEPROM.write(INTERVAL_EEPROM_ADDR, currentIntervalIndex);
+    if (EEPROM.commit()) {
+        Serial.printf("Interval saved to EEPROM: %d (index), %lu ms\n", 
+                      currentIntervalIndex, slideshowInterval);
+    } else {
+        Serial.println("Failed to save interval to EEPROM!");
+    }
+}
+
+void loadIntervalFromEEPROM() {
+    EEPROM.begin(EEPROM_SIZE);
+    
+    // Read saved interval index from EEPROM
+    int savedIndex = EEPROM.read(INTERVAL_EEPROM_ADDR);
+    
+    // Validate the saved index
+    if (savedIndex >= 0 && savedIndex < (sizeof(intervals) / sizeof(intervals[0]))) {
+        currentIntervalIndex = savedIndex;
+        slideshowInterval = intervals[currentIntervalIndex];
+        Serial.printf("Interval loaded from EEPROM: %d (index), %lu ms\n", 
+                      currentIntervalIndex, slideshowInterval);
+    } else {
+        // Invalid or first run - use default
+        currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
+        slideshowInterval = intervals[currentIntervalIndex];
+        Serial.printf("Using default interval: %d (index), %lu ms\n", 
+                      currentIntervalIndex, slideshowInterval);
+        // Save default to EEPROM
+        saveIntervalToEEPROM();
+    }
+}
 
 // ==================== Loading Screen Functions ====================
 void showLoadingScreen(const String& message) {
@@ -218,6 +260,10 @@ void showIntervalMessage() {
 void changeInterval() {
     currentIntervalIndex = (currentIntervalIndex + 1) % (sizeof(intervals) / sizeof(intervals[0]));
     slideshowInterval = intervals[currentIntervalIndex];
+    
+    // Save new interval to EEPROM
+    saveIntervalToEEPROM();
+    
     showIntervalMessage();
     lastImageChange = millis();
 }
@@ -416,6 +462,9 @@ void setup() {
     
     randomSeed(analogRead(0));
     
+    // Load saved interval from EEPROM
+    loadIntervalFromEEPROM();
+    
     // Display initialization
     setup_display();
     
@@ -452,8 +501,10 @@ void setup() {
             currentShuffleIndex++;
             
             Serial.println("\nRandom slideshow started!");
-            Serial.printf("Initial interval: %d seconds\n", slideshowInterval / 1000);
-            Serial.printf("Available intervals: 3, 5, 10, 15, 30, 60 seconds\n");
+            Serial.printf("Current interval: %lu ms (%d seconds)\n", 
+                         slideshowInterval, slideshowInterval / 1000);
+            Serial.printf("Saved interval index: %d\n", currentIntervalIndex);
+            Serial.printf("Available intervals: 3, 5, 10, 15, 30, 60, 120 seconds\n");
             Serial.printf("Total images: %d\n", imageFiles.size());
         } else {
             // No images found
