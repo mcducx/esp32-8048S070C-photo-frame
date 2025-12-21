@@ -21,12 +21,6 @@ unsigned long slideshowInterval = intervals[currentIntervalIndex];
 
 bool fatalError = false;
 
-// Loading screen type
-enum LoadingType {
-    LOADING_BAR
-};
-LoadingType currentLoadingType = LOADING_BAR;
-
 // Button state
 bool lastButtonState = HIGH;
 unsigned long lastButtonPress = 0;
@@ -117,19 +111,19 @@ void loadIntervalFromSD() {
 
 // ==================== Loading Screen Functions ====================
 void showLoadingScreen(const String& message) {
-    gfx.fillScreen(BLACK);
+    gfx.fillScreen(BLACK); // BLACK
     
     gfx.setCursor(140, 300);
     gfx.setTextSize(3);
-    gfx.setTextColor(CYAN);
+    gfx.setTextColor(CYAN); // CYAN
     gfx.print("Photo Frame");
     
     gfx.setCursor(150, 350);
     gfx.setTextSize(2);
-    gfx.setTextColor(WHITE);
+    gfx.setTextColor(WHITE); // WHITE
     gfx.print(message);
     
-    gfx.drawRect(100, 395, 280, 20, WHITE);
+    gfx.drawRect(100, 395, 280, 20, WHITE); // WHITE
 }
 
 void updateLoadingProgress(float progress, const String& message) {
@@ -144,34 +138,34 @@ void updateLoadingProgress(float progress, const String& message) {
     int barWidth = (int)(progress * 260);
     
     // Clear progress bar area
-    gfx.fillRect(102, 397, 260, 16, BLACK);
+    gfx.fillRect(102, 397, 260, 16, BLACK); // BLACK
     
     // Draw progress bar
-    gfx.fillRect(102, 397, barWidth, 16, GREEN);
+    gfx.fillRect(102, 397, barWidth, 16, GREEN); // GREEN
     
     // Draw bar border
-    gfx.drawRect(100, 395, 280, 20, WHITE);
+    gfx.drawRect(100, 395, 280, 20, WHITE); // WHITE
     
     // Show percentage inside bar if space
     if (barWidth > 40) {
         gfx.setCursor(102 + barWidth/2 - 15, 398);
         gfx.setTextSize(1);
-        gfx.setTextColor(BLACK);
+        gfx.setTextColor(BLACK); // BLACK
         gfx.printf("%.0f%%", progress * 100);
     }
     
     // Update message if provided
     if (message.length() > 0) {
-        gfx.fillRect(100, 430, 280, 25, BLACK);
+        gfx.fillRect(100, 430, 280, 25, BLACK); // BLACK
         gfx.setCursor(100, 430);
         gfx.setTextSize(1);
-        gfx.setTextColor(WHITE);
+        gfx.setTextColor(WHITE); // WHITE
         gfx.print(message);
     }
 }
 
 void hideLoadingScreen() {
-    gfx.fillScreen(BLACK);
+    gfx.fillScreen(BLACK); // BLACK
 }
 
 // ==================== Filter System Files ====================
@@ -185,16 +179,16 @@ bool isSystemFile(const String& filename) {
 
 // ==================== Display Error Message ====================
 void displayErrorScreen(const String& title, const String& message) {
-    gfx.fillScreen(BLACK);
+    gfx.fillScreen(BLACK); // BLACK
     
     gfx.setCursor(140, 350);
     gfx.setTextSize(2);
-    gfx.setTextColor(RED);
+    gfx.setTextColor(RED); // RED
     gfx.print(title);
     
     gfx.setCursor(100, 400);
     gfx.setTextSize(1);
-    gfx.setTextColor(WHITE);
+    gfx.setTextColor(WHITE); // WHITE
     gfx.print(message);
     
     gfx.setCursor(100, 450);
@@ -204,10 +198,10 @@ void displayErrorScreen(const String& title, const String& message) {
 
 // ==================== Show Interval Message ====================
 void showIntervalMessage() {
-    gfx.fillRect(0, 0, 480, 50, BLACK);
+    gfx.fillRect(0, 0, 480, 50, BLACK); // BLACK
     gfx.setCursor(10, 10);
     gfx.setTextSize(2);
-    gfx.setTextColor(CYAN);
+    gfx.setTextColor(CYAN); // CYAN
     gfx.print("Interval: ");
     gfx.print(slideshowInterval / 1000);
     gfx.print(" sec");
@@ -262,13 +256,14 @@ bool initSDCard() {
     Serial.println("Initializing SD card...");
     updateLoadingProgress(0.0, "Initializing SD card...");
     
-    // Используем пины из display.h
     sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
     delay(100);
     
-    if (!SD.begin(SD_CS, sdSPI, 2000000)) {  // Reduced speed for stability
-        Serial.println("SD card initialization failed!");
-        return false;
+    if (!SD.begin(SD_CS, sdSPI, 40000000)) {
+        if (!SD.begin(SD_CS, sdSPI, 20000000)) {
+            Serial.println("SD card initialization failed!");
+            return false;
+        }
     }
     
     updateLoadingProgress(0.1, "SD card detected");
@@ -488,14 +483,12 @@ void setup() {
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
     
     // Initialize display
-    Serial.println("Initializing display...");
     setup_display();
     
     // Set portrait mode
     gfx.setRotation(1);
     
     // Initialize JPG decoder
-    // TJpgDec.setSwapBytes(true); // Убрали эту строку, чтобы не менять порядок байтов
     TJpgDec.setCallback(tft_output);
     
     // Show loading screen
@@ -536,6 +529,7 @@ void setup() {
         Serial.println("\nERROR: SD card initialization failed!");
     }
 }
+
 // ==================== Loop ====================
 void loop() {
     if (fatalError) {

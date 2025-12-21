@@ -4,8 +4,6 @@
 #include <TJpg_Decoder.h>
 
 // ==================== Global Display Objects ====================
-TAMC_GT911 ts(TOUCH_GT911_SDA, TOUCH_GT911_SCL, TOUCH_GT911_INT, TOUCH_GT911_RST, 800, 480);
-
 Arduino_ESP32RGBPanel rgbpanel(
     41 /* DE */, 40 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,
     14 /* R0 */, 21 /* R1 */, 47 /* R2 */, 48 /* R3 */, 45 /* R4 */,
@@ -36,19 +34,6 @@ bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) 
     return 1;
 }
 
-// ==================== Check Touch Input ====================
-bool check_touch(uint16_t *x, uint16_t *y) {
-    ts.read();
-    
-    if (ts.isTouched && ts.touches > 0) {
-        *x = ts.points[0].x;
-        *y = ts.points[0].y;
-        return true;
-    }
-    
-    return false;
-}
-
 // ==================== Display Setup ====================
 void setup_display() {
     // Check if Serial is initialized
@@ -56,6 +41,8 @@ void setup_display() {
         Serial.begin(115200);
         delay(100);
     }
+    
+    Serial.println("Initializing display...");
     
     // Initialize display
     gfx.begin();
@@ -65,11 +52,6 @@ void setup_display() {
     // Backlight
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, HIGH);
-    
-    // Initialize touch
-    ts.begin();
-    delay(100);
-    ts.setRotation(1);
     
     Serial.println("Display setup complete.");
     Serial.printf("Display: %dx%d\n", gfx.width(), gfx.height());
