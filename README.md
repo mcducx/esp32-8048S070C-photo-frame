@@ -54,17 +54,6 @@ src/
 platformio.ini        # PlatformIO configuration
 ```
 
-## 🛠️ Used Libraries
-
-- **Arduino_GFX**: Display driver
-- **TJpg_Decoder**: JPEG decoder
-- **SD**: SD card support
-- **TAMC_GT911**: Touchscreen driver
-
-## 📄 License
-
-MIT License
-
 ## 🙏 Acknowledgments
 
 Project based on Arduino_GFX
