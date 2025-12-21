@@ -8,8 +8,6 @@
 
 // ==================== Display & Touch Configuration ====================
 #define TFT_BL 2
-#define DISP_WIDTH  800
-#define DISP_HEIGHT 480
 #define TOUCH_GT911_SCL 20
 #define TOUCH_GT911_SDA 19
 #define TOUCH_GT911_INT -1

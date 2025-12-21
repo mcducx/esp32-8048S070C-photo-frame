@@ -57,8 +57,6 @@ void setup_display() {
         delay(100);
     }
     
-    Serial.println("Initializing display...");
-    
     // Initialize display
     gfx.begin();
     // Set default portrait mode
