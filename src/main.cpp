@@ -477,7 +477,7 @@ void setup() {
     Serial.println("Interval saved to SD card (interval.txt)");
     Serial.println(String(60, '='));
     
-    randomSeed(analogRead(0));
+    randomSeed(micros());
     
     // Initialize BOOT button
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
