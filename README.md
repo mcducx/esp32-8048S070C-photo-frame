@@ -48,7 +48,7 @@ pio run --target upload
 ```
 src/
 ├── main.cpp          # Main slideshow logic
-├── display.cpp       # Display driver and LVGL
+├── display.cpp       # Display driver
 ├── display.h         # Display header file
 └── config.h          # Pin configuration
 platformio.ini        # PlatformIO configuration
