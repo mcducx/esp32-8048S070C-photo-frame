@@ -51,7 +51,7 @@ void setup_display() {
     
     // Backlight
     pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, HIGH);
+    digitalWrite(TFT_BL, 128);
     
     Serial.println("Display setup complete.");
     Serial.printf("Display: %dx%d\n", gfx.width(), gfx.height());
