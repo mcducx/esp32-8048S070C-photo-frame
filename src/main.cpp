@@ -37,6 +37,13 @@ unsigned long messageStartTime = 0;
 bool showingMessage = false;
 const unsigned long MESSAGE_DURATION = 1000;
 
+// Brightness control
+bool lastBrightnessButtonState = HIGH;
+unsigned long brightnessHoldStart = 0;
+const unsigned long BRIGHTNESS_HOLD_TIME = 1000;
+bool brightnessControlActive = false;
+int brightnessStep = 0;
+
 // Wi-Fi & OTA
 bool wifiConnected = false;
 bool otaEnabled = true;
@@ -55,6 +62,8 @@ void showLoadingScreen(const String& message = "Loading...");
 void updateLoadingProgress(float progress, const String& message = "");
 void hideLoadingScreen();
 void processButtonInput();
+void processBrightnessControl();
+void showBrightnessMessage();
 void hideMessage();
 int countTotalFiles();
 void findImageFiles();
@@ -67,8 +76,10 @@ void checkWiFiConnection();
 void initWebServer();
 void handleRoot();
 void handleConfig();
+void handleBrightness();
 void handleFileList();
 void handleFileUpload();
+void handleDirectUpload();  // New direct POST upload
 void handleDeleteFile();
 void handleOTAUpdate();
 void handleOTA();
@@ -137,6 +148,67 @@ void loadIntervalFromSD() {
                       currentIntervalIndex, slideshowInterval);
         saveIntervalToSD();
     }
+}
+
+// ==================== Brightness Control ====================
+void showBrightnessMessage() {
+    gfx.fillRect(0, 700, 480, 50, BLACK);
+    gfx.setCursor(10, 710);
+    gfx.setTextSize(2);
+    gfx.setTextColor(YELLOW);
+    gfx.print("Brightness: ");
+    gfx.print(getBrightness());
+    
+    showingMessage = true;
+    messageStartTime = millis();
+}
+
+void processBrightnessControl() {
+    // Use boot button for brightness control (hold for 1 second)
+    int currentButtonState = digitalRead(BOOT_BUTTON_PIN);
+    unsigned long now = millis();
+    
+    if (currentButtonState == LOW && lastBrightnessButtonState == HIGH) {
+        // Button pressed
+        brightnessHoldStart = now;
+    }
+    else if (currentButtonState == LOW && lastBrightnessButtonState == LOW) {
+        // Button held
+        if (!brightnessControlActive && (now - brightnessHoldStart >= BRIGHTNESS_HOLD_TIME)) {
+            brightnessControlActive = true;
+            brightnessStep = 0;
+            showBrightnessMessage();
+            Serial.println("Brightness control activated");
+        }
+        
+        if (brightnessControlActive) {
+            // Change brightness every 200ms while holding
+            if (now - brightnessHoldStart >= BRIGHTNESS_HOLD_TIME + (brightnessStep * 200)) {
+                brightnessStep++;
+                uint8_t current = getBrightness();
+                current = (current + 32) % 256;  // Increase by 32 (12.5%)
+                setBrightness(current);
+                saveBrightnessToSD();
+                showBrightnessMessage();
+                Serial.printf("Brightness changed to: %d\n", current);
+            }
+        }
+    }
+    else if (currentButtonState == HIGH && lastBrightnessButtonState == LOW) {
+        // Button released
+        if (brightnessControlActive) {
+            brightnessControlActive = false;
+            hideMessage();
+            Serial.println("Brightness control deactivated");
+        }
+        else if (now - brightnessHoldStart < BRIGHTNESS_HOLD_TIME) {
+            // Short press - change interval
+            changeInterval();
+        }
+        brightnessHoldStart = 0;
+    }
+    
+    lastBrightnessButtonState = currentButtonState;
 }
 
 // ==================== Wi-Fi Functions ====================
@@ -216,6 +288,9 @@ void handleRoot() {
             .tab button:hover { background-color: #ddd; }
             .tab button.active { background-color: #ccc; }
             .tabcontent { display: none; padding: 6px 12px; border: 1px solid #ccc; border-top: none; }
+            .slider { width: 100%; }
+            .upload-box { border: 2px dashed #ccc; padding: 20px; text-align: center; margin: 10px 0; }
+            .upload-box.dragover { border-color: #4CAF50; background: #f0fff0; }
         </style>
         <script>
             function showTab(tabName) {
@@ -243,6 +318,8 @@ void handleRoot() {
                         document.getElementById('currentImage').textContent = data.current_image;
                         document.getElementById('totalImages').textContent = data.total_images;
                         document.getElementById('interval').textContent = data.interval;
+                        document.getElementById('brightnessValue').textContent = data.brightness;
+                        document.getElementById('brightnessSlider').value = data.brightness;
                         document.getElementById('freeHeap').textContent = data.free_heap;
                     });
             }
@@ -286,6 +363,34 @@ void handleRoot() {
                 xhr.send(formData);
             }
             
+            // Drag and drop functionality
+            function setupDragAndDrop() {
+                var dropZone = document.getElementById('dropZone');
+                
+                dropZone.addEventListener('dragover', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    dropZone.classList.add('dragover');
+                });
+                
+                dropZone.addEventListener('dragleave', function(e) {
+                    dropZone.classList.remove('dragover');
+                });
+                
+                dropZone.addEventListener('drop', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    dropZone.classList.remove('dragover');
+                    
+                    var files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        document.getElementById('fileInput').files = files;
+                        uploadFile();
+                    }
+                });
+            }
+            
             function loadFileList() {
                 fetch('/files')
                     .then(response => response.json())
@@ -326,10 +431,41 @@ void handleRoot() {
                     });
             }
             
+            function setBrightness() {
+                var brightness = document.getElementById('brightnessSlider').value;
+                fetch('/brightness?value=' + brightness)
+                    .then(response => {
+                        if(response.ok) {
+                            document.getElementById('brightnessValue').textContent = brightness;
+                        }
+                    });
+            }
+            
+            function uploadDirect() {
+                var form = document.getElementById('directUploadForm');
+                var formData = new FormData(form);
+                
+                fetch('/direct-upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(text => {
+                    alert(text);
+                    if (text.includes("successfully")) {
+                        loadFileList();
+                    }
+                })
+                .catch(error => {
+                    alert("Upload failed: " + error);
+                });
+            }
+            
             window.onload = function() {
                 showTab('status');
                 updateStatus();
                 loadFileList();
+                setupDragAndDrop();
                 setInterval(updateStatus, 5000);
             };
         </script>
@@ -353,6 +489,7 @@ void handleRoot() {
                     <p>Current Image: <span id="currentImage"></span></p>
                     <p>Total Images: <span id="totalImages"></span></p>
                     <p>Interval: <span id="interval"></span> seconds</p>
+                    <p>Brightness: <span id="brightnessValue"></span>/255</p>
                     <p>Free Memory: <span id="freeHeap"></span> bytes</p>
                 </div>
             </div>
@@ -367,8 +504,20 @@ void handleRoot() {
             <div id="upload" class="tabcontent">
                 <div class="card">
                     <h3>Upload New Image</h3>
-                    <input type="file" id="fileInput" accept=".jpg,.jpeg">
-                    <button onclick="uploadFile()">Upload</button>
+                    <div class="upload-box" id="dropZone">
+                        <p>Drag & drop images here or click to select</p>
+                        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png" multiple>
+                        <button onclick="uploadFile()">Upload Selected Files</button>
+                    </div>
+                    
+                    <div style="margin-top: 20px;">
+                        <h4>Alternative Upload (Simple POST)</h4>
+                        <form id="directUploadForm">
+                            <input type="file" name="image" accept=".jpg,.jpeg,.png">
+                            <button type="button" onclick="uploadDirect()">Upload via POST</button>
+                        </form>
+                    </div>
+                    
                     <div style="margin-top: 10px;">
                         <div style="width: 100%; background: #ddd; border-radius: 5px;">
                             <div id="progressBar" style="width: 0%; height: 20px; background: #4CAF50; border-radius: 5px;"></div>
@@ -384,6 +533,10 @@ void handleRoot() {
                     <p>Slideshow Interval (seconds):</p>
                     <input type="number" id="intervalInput" min="3" max="120" value="10">
                     <button onclick="setIntervalValue()">Set Interval</button>
+                    
+                    <p style="margin-top: 20px;">Screen Brightness:</p>
+                    <input type="range" id="brightnessSlider" min="0" max="255" value="128" class="slider" oninput="setBrightness()">
+                    <p>Current: <span id="brightnessValue"></span>/255</p>
                 </div>
             </div>
             
@@ -422,6 +575,21 @@ void handleConfig() {
     server.send(200, "text/plain", "OK");
 }
 
+void handleBrightness() {
+    if (server.hasArg("value")) {
+        int brightness = server.arg("value").toInt();
+        if (brightness >= 0 && brightness <= 255) {
+            setBrightness(brightness);
+            saveBrightnessToSD();
+            server.send(200, "text/plain", "OK");
+        } else {
+            server.send(400, "text/plain", "Invalid brightness value");
+        }
+    } else {
+        server.send(400, "text/plain", "Missing value parameter");
+    }
+}
+
 void handleFileList() {
     DynamicJsonDocument doc(4096);
     JsonArray files = doc.createNestedArray("files");
@@ -436,7 +604,7 @@ void handleFileList() {
             String ext = filename.substring(filename.lastIndexOf('.'));
             ext.toLowerCase();
             
-            if (ext == ".jpg" || ext == ".jpeg") {
+            if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") {
                 JsonObject file = files.createNestedObject();
                 file["name"] = filename;
                 file["size"] = formatBytes(entry.size());
@@ -452,7 +620,7 @@ void handleFileList() {
 }
 
 void handleFileUpload() {
-    static File uploadFile;  // Статическая переменная для файла
+    static File uploadFile;
     
     HTTPUpload& upload = server.upload();
     
@@ -460,7 +628,6 @@ void handleFileUpload() {
         String filename = "/" + upload.filename;
         Serial.printf("Upload start: %s\n", filename.c_str());
         
-        // Закрыть предыдущий файл, если открыт
         if (uploadFile) {
             uploadFile.close();
         }
@@ -480,9 +647,34 @@ void handleFileUpload() {
             Serial.printf("Upload complete: %s, Size: %u\n", 
                          upload.filename.c_str(), upload.totalSize);
             
-            // Refresh image list
             findImageFiles();
             initRandomSlideshow();
+        }
+    }
+}
+
+void handleDirectUpload() {
+    // Simple POST upload handler
+    HTTPUpload& upload = server.upload();
+    
+    if (upload.status == UPLOAD_FILE_START) {
+        String filename = "/" + upload.filename;
+        Serial.printf("Direct upload start: %s\n", filename.c_str());
+        
+        File uploadFile = SD.open(filename, FILE_WRITE);
+        if (uploadFile) {
+            while (uploadFile.available()) {
+                uploadFile.write(uploadFile.read());
+            }
+            uploadFile.close();
+            Serial.printf("Direct upload complete: %s\n", filename.c_str());
+            
+            findImageFiles();
+            initRandomSlideshow();
+            
+            server.send(200, "text/plain", "File uploaded successfully");
+        } else {
+            server.send(500, "text/plain", "Failed to save file");
         }
     }
 }
@@ -494,7 +686,6 @@ void handleDeleteFile() {
             SD.remove(filename);
             Serial.printf("Deleted file: %s\n", filename.c_str());
             
-            // Refresh image list
             findImageFiles();
             initRandomSlideshow();
             
@@ -551,6 +742,7 @@ void handleGetStatus() {
         String(currentImageIndex + 1) + "/" + String(imageFiles.size());
     doc["total_images"] = imageFiles.size();
     doc["interval"] = String(slideshowInterval / 1000) + "s";
+    doc["brightness"] = getBrightness();
     doc["free_heap"] = ESP.getFreeHeap();
     
     String response;
@@ -561,11 +753,15 @@ void handleGetStatus() {
 void initWebServer() {
     server.on("/", HTTP_GET, handleRoot);
     server.on("/config", HTTP_GET, handleConfig);
+    server.on("/brightness", HTTP_GET, handleBrightness);
     server.on("/files", HTTP_GET, handleFileList);
     server.on("/status", HTTP_GET, handleGetStatus);
     server.on("/upload", HTTP_POST, []() {
         server.send(200, "text/plain", "Upload complete");
     }, handleFileUpload);
+    server.on("/direct-upload", HTTP_POST, []() {
+        server.send(200, "text/plain", "Upload complete");
+    }, handleDirectUpload);
     server.on("/delete", HTTP_DELETE, handleDeleteFile);
     server.on("/update", HTTP_GET, handleOTAUpdate);
     server.on("/ota", HTTP_POST, []() {
@@ -582,21 +778,6 @@ String formatBytes(size_t bytes) {
     if (bytes < 1024) return String(bytes) + " B";
     else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
     else return String(bytes / 1024.0 / 1024.0) + " MB";
-}
-
-String getContentType(String filename) {
-    if (filename.endsWith(".html")) return "text/html";
-    else if (filename.endsWith(".css")) return "text/css";
-    else if (filename.endsWith(".js")) return "application/javascript";
-    else if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) return "image/jpeg";
-    else if (filename.endsWith(".png")) return "image/png";
-    else if (filename.endsWith(".gif")) return "image/gif";
-    else if (filename.endsWith(".ico")) return "image/x-icon";
-    else if (filename.endsWith(".xml")) return "text/xml";
-    else if (filename.endsWith(".pdf")) return "application/pdf";
-    else if (filename.endsWith(".zip")) return "application/zip";
-    else if (filename.endsWith(".gz")) return "application/x-gzip";
-    return "text/plain";
 }
 
 void showWiFiMessage(const String& message) {
@@ -781,6 +962,7 @@ bool initSDCard() {
     
     updateLoadingProgress(0.15, "Loading settings...");
     loadIntervalFromSD();
+    loadBrightnessFromSD();
     
     return true;
 }
@@ -870,7 +1052,7 @@ void findImageFiles() {
         String ext = filename.substring(filename.lastIndexOf('.'));
         ext.toLowerCase();
         
-        if (ext == ".jpg" || ext == ".jpeg") {
+        if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") {
             String path = "/" + String(entry.name());
             imageFiles.push_back(path);
             imageCount++;
@@ -962,6 +1144,8 @@ void displayImage(int index) {
         gfx.setTextColor(CYAN);
         gfx.print("Wi-Fi: ");
         gfx.print(WiFi.localIP().toString());
+        gfx.print(" Brightness: ");
+        gfx.print(getBrightness());
     }
     
     lastImageChange = millis();
@@ -973,9 +1157,9 @@ void setup() {
     delay(1000);
     
     Serial.println("\n" + String(60, '='));
-    Serial.println("ESP32 Photo Frame - Wi-Fi + OTA Enabled");
-    Serial.println("Press BOOT button to change interval");
-    Serial.println("Interval saved to SD card (interval.txt)");
+    Serial.println("ESP32 Photo Frame - Wi-Fi + OTA + Brightness Control");
+    Serial.println("Short press BOOT button: Change interval");
+    Serial.println("Hold BOOT button (1 sec): Adjust brightness");
     Serial.println(String(60, '='));
     
     randomSeed(micros());
@@ -1023,6 +1207,7 @@ void setup() {
             Serial.println("\nRandom slideshow started!");
             Serial.printf("Current interval: %lu ms (%d seconds)\n", 
                          slideshowInterval, slideshowInterval / 1000);
+            Serial.printf("Current brightness: %d/255\n", getBrightness());
             Serial.printf("Saved interval index: %d\n", currentIntervalIndex);
             Serial.printf("Available intervals: 3, 5, 10, 15, 30, 60, 120 seconds\n");
             Serial.printf("Total images: %d\n", imageFiles.size());
@@ -1036,12 +1221,13 @@ void setup() {
                 Serial.println(".local/");
             }
             
-            Serial.println("Press BOOT button to change slideshow interval");
+            Serial.println("Short press BOOT button to change slideshow interval");
+            Serial.println("Hold BOOT button (1 sec) to adjust brightness");
         } else {
             fatalError = true;
             hideLoadingScreen();
             displayErrorScreen("NO IMAGES", "Add JPG files to SD card");
-            Serial.println("\nERROR: No JPEG images found on SD card!");
+            Serial.println("\nERROR: No images found on SD card!");
         }
     } else {
         fatalError = true;
@@ -1058,13 +1244,16 @@ void loop() {
         return;
     }
     
+    // Process button input (for interval changes)
     processButtonInput();
+    
+    // Process brightness control (hold button)
+    processBrightnessControl();
     
     // Check Wi-Fi connection periodically
     if (wifiConnected) {
         checkWiFiConnection();
         server.handleClient();
-        // MDNS.update();  // Удалено - не требуется для ESP32
     }
     
     if (showingMessage && (millis() - messageStartTime >= MESSAGE_DURATION)) {

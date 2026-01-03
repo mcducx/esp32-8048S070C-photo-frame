@@ -1,9 +1,11 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// ==================== Slideshow Configuration ====================
-#define INTERVAL_DEFAULT_INDEX 2
+// ==================== Settings ====================
 #define INTERVAL_FILENAME "/interval.txt"
+#define BRIGHTNESS_FILENAME "/brightness.txt"
+#define INTERVAL_DEFAULT_INDEX 2
+#define BRIGHTNESS_DEFAULT 128  // 50% brightness (0-255)
 
 // ==================== Button Configuration ====================
 #define BOOT_BUTTON_PIN 0  // GPIO0 - кнопка BOOT на ESP32
