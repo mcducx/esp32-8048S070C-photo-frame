@@ -1430,6 +1430,7 @@ void handleRoot() {
     server.send(200, "text/html", html);
 }
 
+// ==================== OTA Handler ====================
 void handleOTA() {
     HTTPUpload& upload = server.upload();
     
@@ -1463,18 +1464,75 @@ void handleOTA() {
         // Finalize the update
         if (Update.end(true)) {
             Serial.printf("OTA Update Success: %u bytes\n", upload.totalSize);
-            Serial.println("Rebooting...");
             
-            // Send success response
-            server.sendHeader("Location", "/");
-            server.send(303);
+            // Send HTML response with success message and auto-refresh
+            String html = "<!DOCTYPE html><html><head>";
+            html += "<title>OTA Update Success</title>";
+            html += "<meta charset='UTF-8'>";
+            html += "<meta http-equiv='refresh' content='5;url=/'>"; // Auto-refresh after 5 seconds
+            html += "<style>";
+            html += "body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }";
+            html += ".success-box { background: #4CAF50; color: white; padding: 30px; border-radius: 10px; margin: 20px auto; max-width: 600px; }";
+            html += ".info { background: #2196F3; color: white; padding: 20px; border-radius: 10px; margin: 20px auto; max-width: 600px; }";
+            html += ".countdown { font-size: 24px; font-weight: bold; color: #FF9800; margin: 20px; }";
+            html += "</style>";
+            html += "<script>";
+            html += "let seconds = 5;";
+            html += "function updateCountdown() {";
+            html += "  document.getElementById('countdown').textContent = seconds;";
+            html += "  seconds--;";
+            html += "  if (seconds < 0) {";
+            html += "    clearInterval(timer);";
+            html += "    document.getElementById('countdown').textContent = '0';";
+            html += "  }";
+            html += "}";
+            html += "const timer = setInterval(updateCountdown, 1000);";
+            html += "</script>";
+            html += "</head><body>";
+            html += "<div class='success-box'>";
+            html += "<h1>✅ OTA Update Successful!</h1>";
+            html += "<p>Firmware has been updated successfully.</p>";
+            html += "<p><strong>File:</strong> " + upload.filename + "</p>";
+            html += "<p><strong>Size:</strong> " + String(upload.totalSize) + " bytes</p>";
+            html += "</div>";
+            html += "<div class='info'>";
+            html += "<h2>Device is rebooting...</h2>";
+            html += "<p>The ESP32 will now reboot with the new firmware.</p>";
+            html += "<p>You will be automatically redirected to the main page in <span class='countdown' id='countdown'>5</span> seconds.</p>";
+            html += "</div>";
+            html += "<p><a href='/' style='display:inline-block; margin-top:20px; padding:10px 20px; background:#2196F3; color:white; text-decoration:none; border-radius:5px;'>Return to Main Page</a></p>";
+            html += "</body></html>";
             
-            // Delay and reboot
+            server.send(200, "text/html", html);
+            Serial.println("OTA update successful, sending success page and rebooting...");
+            
+            // Delay to allow response to be sent
             delay(1000);
+            
+            // Reboot the device
+            Serial.println("Rebooting...");
             ESP.restart();
         } else {
             Update.printError(Serial);
-            server.send(500, "text/plain", "Update FAILED");
+            
+            // Send error response
+            String html = "<!DOCTYPE html><html><head>";
+            html += "<title>OTA Update Failed</title>";
+            html += "<meta charset='UTF-8'>";
+            html += "<style>";
+            html += "body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }";
+            html += ".error-box { background: #f44336; color: white; padding: 30px; border-radius: 10px; margin: 20px auto; max-width: 600px; }";
+            html += "</style>";
+            html += "</head><body>";
+            html += "<div class='error-box'>";
+            html += "<h1>❌ OTA Update Failed!</h1>";
+            html += "<p>Firmware update was not successful.</p>";
+            html += "<p>Please check the file and try again.</p>";
+            html += "</div>";
+            html += "<p><a href='/' style='display:inline-block; margin-top:20px; padding:10px 20px; background:#2196F3; color:white; text-decoration:none; border-radius:5px;'>Return to Main Page</a></p>";
+            html += "</body></html>";
+            
+            server.send(500, "text/html", html);
         }
         otaInProgress = false;
         Serial.setDebugOutput(false);
@@ -1483,7 +1541,24 @@ void handleOTA() {
         Serial.println("OTA Update was aborted");
         Update.end();
         otaInProgress = false;
-        server.send(500, "text/plain", "Update aborted");
+        
+        // Send abort response
+        String html = "<!DOCTYPE html><html><head>";
+        html += "<title>OTA Update Aborted</title>";
+        html += "<meta charset='UTF-8'>";
+        html += "<style>";
+        html += "body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }";
+        html += ".warning-box { background: #FF9800; color: white; padding: 30px; border-radius: 10px; margin: 20px auto; max-width: 600px; }";
+        html += "</style>";
+        html += "</head><body>";
+        html += "<div class='warning-box'>";
+        html += "<h1>⚠️ OTA Update Aborted!</h1>";
+        html += "<p>Firmware update was aborted by the user or due to an error.</p>";
+        html += "</div>";
+        html += "<p><a href='/' style='display:inline-block; margin-top:20px; padding:10px 20px; background:#2196F3; color:white; text-decoration:none; border-radius:5px;'>Return to Main Page</a></p>";
+        html += "</body></html>";
+        
+        server.send(500, "text/html", html);
     }
 }
 
