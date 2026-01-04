@@ -51,8 +51,6 @@ const char* menuItems[] = {"Set Interval", "Set Brightness", "System Info", "Exi
 int menuItemCount = 4;
 int selectedMenuItem = 0;
 unsigned long menuLastInteraction = 0;
-//const unsigned long SETTING_TIMEOUT = 5000; // 5 секунд для выхода из настроек
-//const unsigned long MENU_TIMEOUT = 10000;  // 10 секунд для выхода из главного меню
 
 // Fatal error
 bool fatalError = false;
@@ -123,13 +121,42 @@ void checkWiFiConnection();
 void initWebServer();
 void handleRoot();
 void handleOTA();
-void handleAPI();
 
 // SD Card Functions
 bool initSDCard();
 int countTotalFiles();
 void findImageFiles();
 bool isSystemFile(const String& filename);
+uint64_t getSDFreeSpace();
+String formatBytes(uint64_t bytes);
+
+// Debug function
+void debugFileList();
+
+// CORS headers
+void setCORSHeaders();
+
+// ==================== Utility Functions ====================
+String formatBytes(uint64_t bytes) {
+    if (bytes < 1024) {
+        return String(bytes) + " B";
+    } else if (bytes < 1024 * 1024) {
+        return String(bytes / 1024.0, 1) + " KB";
+    } else if (bytes < 1024 * 1024 * 1024) {
+        return String(bytes / (1024.0 * 1024.0), 1) + " MB";
+    } else {
+        return String(bytes / (1024.0 * 1024.0 * 1024.0), 1) + " GB";
+    }
+}
+
+uint64_t getSDFreeSpace() {
+    if (!SD.exists("/")) {
+        return 0;
+    }
+    uint64_t total = SD.totalBytes();
+    uint64_t used = SD.usedBytes();
+    return total - used;
+}
 
 // ==================== Loading Screen Functions ====================
 void showLoadingScreen(const String& message) {
@@ -198,6 +225,13 @@ void updateLoadingProgress(float progress, const String& message) {
 void hideLoadingScreen() {
     showingLoading = false;
     gfx.fillScreen(BLACK);
+}
+
+// ==================== CORS Headers Function ====================
+void setCORSHeaders() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
 // ==================== SD Card Functions ====================
@@ -563,6 +597,21 @@ void hideMessage() {
     }
 }
 
+// ==================== Debug Functions ====================
+void debugFileList() {
+    Serial.println("=== DEBUG File List ===");
+    Serial.printf("Total image files in vector: %d\n", imageFiles.size());
+    
+    for(int i = 0; i < min(40, (int)imageFiles.size()); i++) {
+        Serial.printf("%d: %s\n", i + 1, imageFiles[i].c_str());
+    }
+    
+    if(imageFiles.size() > 40) {
+        Serial.println("... and more");
+    }
+    Serial.println("=====================");
+}
+
 // ==================== Button Handling ====================
 void processButtonInput() {
     int currentButtonState = digitalRead(BOOT_BUTTON_PIN);
@@ -903,6 +952,21 @@ void showSystemInfo() {
     
     y += lineHeight;
     
+    // SD Card free space
+    gfx.setTextColor(WHITE);
+    gfx.setCursor(50, y);
+    gfx.print("SD Free: ");
+    gfx.setTextColor(GREEN);
+    
+    uint64_t freeSpace = getSDFreeSpace();
+    if (freeSpace > 0) {
+        gfx.print(formatBytes(freeSpace));
+    } else {
+        gfx.print("N/A");
+    }
+    
+    y += lineHeight;
+    
     // Free memory
     gfx.setTextColor(WHITE);
     gfx.setCursor(50, y);
@@ -1037,13 +1101,24 @@ void checkWiFiConnection() {
 
 // ==================== API Functions ====================
 void handleAPIFiles() {
+    Serial.printf("API request: %s %s\n", server.method() == HTTP_GET ? "GET" : 
+                  server.method() == HTTP_POST ? "POST" : 
+                  server.method() == HTTP_DELETE ? "DELETE" : "OTHER", 
+                  server.uri().c_str());
+    
+    // Set CORS headers for all API responses
+    setCORSHeaders();
+    
     // GET request - return list of files (only names)
     if (server.method() == HTTP_GET) {
         Serial.println("GET /api/files - Processing request");
         
         // Создаем JSON документ с достаточным размером
-        DynamicJsonDocument doc(24576); // Увеличил размер для большего количества файлов
-        JsonArray files = doc.to<JsonArray>();
+        DynamicJsonDocument doc(32768);
+        
+        // Создаем объект с массивом files
+        JsonObject root = doc.to<JsonObject>();
+        JsonArray files = root.createNestedArray("files");
         
         // Просто добавляем имена файлов без открытия каждого файла
         for (const String& filepath : imageFiles) {
@@ -1059,8 +1134,8 @@ void handleAPIFiles() {
             files.add(filename);
         }
         
-        doc["count"] = imageFiles.size();
-        doc["status"] = "success";
+        root["count"] = imageFiles.size();
+        root["status"] = "success";
         
         String response;
         size_t jsonSize = serializeJson(doc, response);
@@ -1103,9 +1178,24 @@ void handleAPIFiles() {
                 findImageFiles();
                 initRandomSlideshow();
                 
-                server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"File uploaded successfully\"}");
+                // Create response
+                DynamicJsonDocument doc(1024);
+                doc["status"] = "success";
+                doc["message"] = "File uploaded successfully";
+                doc["filename"] = upload.filename;
+                doc["size"] = upload.totalSize;
+                
+                String response;
+                serializeJson(doc, response);
+                server.send(200, "application/json", response);
             } else {
-                server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to save file\"}");
+                DynamicJsonDocument doc(1024);
+                doc["status"] = "error";
+                doc["message"] = "Failed to save file";
+                
+                String response;
+                serializeJson(doc, response);
+                server.send(500, "application/json", response);
             }
         }
     }
@@ -1120,17 +1210,121 @@ void handleAPIFiles() {
                     findImageFiles();
                     initRandomSlideshow();
                     
-                    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"File deleted successfully\"}");
+                    DynamicJsonDocument doc(1024);
+                    doc["status"] = "success";
+                    doc["message"] = "File deleted successfully";
+                    doc["filename"] = server.arg("filename");
+                    
+                    String response;
+                    serializeJson(doc, response);
+                    server.send(200, "application/json", response);
                 } else {
-                    server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to delete file\"}");
+                    DynamicJsonDocument doc(1024);
+                    doc["status"] = "error";
+                    doc["message"] = "Failed to delete file";
+                    
+                    String response;
+                    serializeJson(doc, response);
+                    server.send(500, "application/json", response);
                 }
             } else {
-                server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"File not found\"}");
+                DynamicJsonDocument doc(1024);
+                doc["status"] = "error";
+                doc["message"] = "File not found";
+                
+                String response;
+                serializeJson(doc, response);
+                server.send(404, "application/json", response);
             }
         } else {
-            server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing filename parameter\"}");
+            DynamicJsonDocument doc(1024);
+            doc["status"] = "error";
+            doc["message"] = "Missing filename parameter";
+            
+            String response;
+            serializeJson(doc, response);
+            server.send(400, "application/json", response);
         }
     }
+}
+
+// ==================== Download File Handler ====================
+void handleDownload() {
+    Serial.println("GET /api/download - Processing download request");
+    
+    // Set CORS headers
+    setCORSHeaders();
+    
+    // Проверяем наличие параметра filename
+    if (!server.hasArg("filename")) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing filename parameter\"}");
+        Serial.println("Download error: Missing filename parameter");
+        return;
+    }
+    
+    String filename = server.arg("filename");
+    Serial.printf("Download requested: %s\n", filename.c_str());
+    
+    // Безопасность: проверяем, что имя файла не содержит опасных символов
+    if (filename.indexOf("..") >= 0 || filename.indexOf("/") >= 0 || filename.indexOf("\\") >= 0) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid filename\"}");
+        Serial.println("Download error: Invalid filename (path traversal attempt)");
+        return;
+    }
+    
+    // Добавляем корневой путь
+    String filepath = "/" + filename;
+    
+    // Проверяем, существует ли файл
+    if (!SD.exists(filepath)) {
+        server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"File not found\"}");
+        Serial.printf("Download error: File not found: %s\n", filepath.c_str());
+        return;
+    }
+    
+    // Открываем файл для чтения
+    File file = SD.open(filepath, FILE_READ);
+    if (!file) {
+        server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to open file\"}");
+        Serial.printf("Download error: Failed to open file: %s\n", filepath.c_str());
+        return;
+    }
+    
+    // Определяем MIME-тип по расширению файла
+    String contentType = "application/octet-stream";
+    if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) {
+        contentType = "image/jpeg";
+    } else if (filename.endsWith(".png")) {
+        contentType = "image/png";
+    } else if (filename.endsWith(".gif")) {
+        contentType = "image/gif";
+    } else if (filename.endsWith(".bmp")) {
+        contentType = "image/bmp";
+    } else if (filename.endsWith(".txt")) {
+        contentType = "text/plain";
+    } else if (filename.endsWith(".json")) {
+        contentType = "application/json";
+    }
+    
+    // Получаем размер файла
+    size_t fileSize = file.size();
+    Serial.printf("Downloading file: %s, Size: %d bytes, Type: %s\n", 
+                  filename.c_str(), fileSize, contentType.c_str());
+    
+    // Отправляем заголовки
+    server.sendHeader("Content-Type", contentType);
+    server.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+    server.sendHeader("Content-Length", String(fileSize));
+    server.sendHeader("Cache-Control", "no-cache");
+    server.sendHeader("Connection", "close");
+    
+    // Отправляем файл
+    server.streamFile(file, contentType);
+    
+    // Закрываем файл
+    file.close();
+    
+    Serial.println("Download completed successfully");
 }
 
 // ==================== Web Server Handlers ====================
@@ -1140,7 +1334,7 @@ void handleRoot() {
     html += "<meta charset='UTF-8'>";
     html += "<style>";
     html += "body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f0f0;min-height:100vh}";
-    html += ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}";
+    html += ".container{max-width:800px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}";
     html += "h1{color:#333;text-align:center;margin-bottom:20px}";
     html += ".status{margin:20px 0;padding:15px;background:#f8f9fa;border-radius:5px}";
     html += ".status-item{margin:10px 0}";
@@ -1150,8 +1344,13 @@ void handleRoot() {
     html += ".ota-section h2{margin-top:0;color:#2196F3}";
     html += "input[type='file']{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:5px}";
     html += "input[type='submit']{background:#4CAF50;color:white;border:none;padding:12px 24px;border-radius:5px;cursor:pointer;font-size:16px;width:100%}";
-    html += ".progress{width:100%;background:#ddd;border-radius:5px;margin:10px 0;display:none}";
-    html += ".progress-bar{width:0%;height:20px;background:#4CAF50;border-radius:5px}";
+    html += ".api-section{margin:30px 0;padding:20px;background:#f1f8e9;border-radius:5px;border:2px solid #8BC34A}";
+    html += ".api-section h2{margin-top:0;color:#689F38}";
+    html += ".api-endpoint{background:#f5f5f5;padding:10px;margin:10px 0;border-left:4px solid #2196F3;border-radius:3px}";
+    html += ".method{display:inline-block;padding:3px 8px;background:#2196F3;color:white;border-radius:3px;font-size:12px;margin-right:10px}";
+    html += ".method.get{background:#4CAF50}";
+    html += ".method.post{background:#FF9800}";
+    html += ".method.delete{background:#f44336}";
     html += "</style>";
     html += "</head><body>";
     
@@ -1163,74 +1362,66 @@ void handleRoot() {
     html += "<div class='status-item'><span class='label'>Device:</span> <span class='value'>" + String(OTA_HOSTNAME) + "</span></div>";
     html += "<div class='status-item'><span class='label'>Wi-Fi:</span> <span class='value'>" + (wifiConnected ? "Connected (" + WiFi.localIP().toString() + ")" : "Disconnected") + "</span></div>";
     html += "<div class='status-item'><span class='label'>Images:</span> <span class='value'>" + String(imageFiles.size()) + "</span></div>";
-    html += "<div class='status-item'><span class='label'>Free Memory:</span> <span class='value'>" + String(ESP.getFreeHeap() / 1024) + " KB</span></div>";
+    
+    // SD Card free space
+    uint64_t freeSpace = getSDFreeSpace();
+    uint64_t totalSpace = SD.cardSize();
+    float freePercent = totalSpace > 0 ? (freeSpace * 100.0 / totalSpace) : 0;
+    
+    html += "<div class='status-item'><span class='label'>SD Card:</span> <span class='value'>";
+    html += formatBytes(freeSpace) + " free (" + String(freePercent, 1) + "%)";
+    html += "</span></div>";
     html += "</div>";
     
-    // OTA Section
+    // Firmware update section
     html += "<div class='ota-section'>";
     html += "<h2>Firmware Update</h2>";
-    html += "<form id='uploadForm' method='POST' action='/update' enctype='multipart/form-data'>";
-    html += "<input type='file' name='update' accept='.bin' required id='fileInput'>";
-    html += "<input type='submit' value='Upload Firmware' id='submitBtn'>";
+    html += "<form id='firmwareForm' method='POST' action='/update' enctype='multipart/form-data'>";
+    html += "<input type='file' name='update' accept='.bin' required>";
+    html += "<input type='submit' value='Upload Firmware' style='background:#FF9800'>";
     html += "</form>";
-    
-    html += "<div class='progress' id='progressContainer'>";
-    html += "<div class='progress-bar' id='progressBar'></div>";
-    html += "<div id='progressText' style='text-align:center;margin-top:5px'></div>";
-    html += "</div>";
     html += "</div>";
     
-    html += "<div style='text-align:center;margin-top:20px;color:#666;font-size:14px'>";
-    html += "<p>API Endpoints:</p>";
-    html += "<p>GET /api/files - List all photos</p>";
-    html += "<p>POST /api/files - Upload photo</p>";
-    html += "<p>DELETE /api/files?filename=... - Delete photo</p>";
+    // API Endpoints section
+    html += "<div class='api-section'>";
+    html += "<h2>API Endpoints</h2>";
+    
+    html += "<div class='api-endpoint'>";
+    html += "<span class='method get'>GET</span>";
+    html += "<strong>/api/files</strong> - List all image files";
+    html += "<div style='margin-top:5px;color:#666;font-size:14px'>Returns JSON array of filenames</div>";
     html += "</div>";
+    
+    html += "<div class='api-endpoint'>";
+    html += "<span class='method post'>POST</span>";
+    html += "<strong>/api/files</strong> - Upload new image";
+    html += "<div style='margin-top:5px;color:#666;font-size:14px'>Multipart form-data, accepts .jpg, .jpeg files</div>";
+    html += "</div>";
+    
+    html += "<div class='api-endpoint'>";
+    html += "<span class='method delete'>DELETE</span>";
+    html += "<strong>/api/files?filename=FILE.jpg</strong> - Delete image";
+    html += "<div style='margin-top:5px;color:#666;font-size:14px'>Deletes specified file from SD card</div>";
+    html += "</div>";
+    
+    html += "<div class='api-endpoint'>";
+    html += "<span class='method get'>GET</span>";
+    html += "<strong>/api/download?filename=FILE.jpg</strong> - Download image";
+    html += "<div style='margin-top:5px;color:#666;font-size:14px'>Downloads file as attachment</div>";
+    html += "</div>";
+    
+    html += "</div>"; // End api-section
     
     html += "</div>"; // End container
     
-    // JavaScript for OTA progress
+    // JavaScript
     html += "<script>";
-    html += "document.getElementById('uploadForm').onsubmit = function(e) {";
-    html += "e.preventDefault();";
-    html += "var fileInput = document.getElementById('fileInput');";
-    html += "if(fileInput.files.length === 0) {";
-    html += "alert('Please select a firmware file first!');";
-    html += "return false;";
-    html += "}";
-    
-    html += "var formData = new FormData();";
-    html += "formData.append('update', fileInput.files[0]);";
-    
-    html += "var xhr = new XMLHttpRequest();";
-    html += "document.getElementById('progressContainer').style.display = 'block';";
-    html += "document.getElementById('submitBtn').disabled = true;";
-    html += "document.getElementById('submitBtn').value = 'Uploading...';";
-    
-    html += "xhr.upload.onprogress = function(e) {";
-    html += "if (e.lengthComputable) {";
-    html += "var percent = Math.round((e.loaded / e.total) * 100);";
-    html += "document.getElementById('progressBar').style.width = percent + '%';";
-    html += "document.getElementById('progressText').textContent = 'Uploading: ' + percent + '%';";
-    html += "}";
-    html += "};";
-    
-    html += "xhr.onload = function() {";
-    html += "if (xhr.status === 200) {";
-    html += "document.getElementById('progressText').textContent = '✅ Update complete! Rebooting...';";
-    html += "document.getElementById('progressText').style.color = '#4CAF50';";
-    html += "setTimeout(function() { location.reload(); }, 3000);";
-    html += "} else {";
-    html += "document.getElementById('progressText').textContent = '❌ Update failed!';";
-    html += "document.getElementById('progressText').style.color = '#f44336';";
-    html += "document.getElementById('submitBtn').disabled = false;";
-    html += "document.getElementById('submitBtn').value = 'Upload Firmware';";
-    html += "}";
-    html += "};";
-    
-    html += "xhr.open('POST', '/update');";
-    html += "xhr.send(formData);";
-    html += "return false;";
+    html += "// Handle firmware upload confirmation";
+    html += "document.getElementById('firmwareForm').onsubmit = function(e) {";
+    html += "  if (!confirm('Are you sure you want to update firmware? This will reboot the device.')) {";
+    html += "    return false;";
+    html += "  }";
+    html += "  return true;";
     html += "};";
     html += "</script>";
     
@@ -1297,6 +1488,18 @@ void handleOTA() {
 }
 
 void initWebServer() {
+    // Handle CORS preflight requests
+    server.on("/api/files", HTTP_OPTIONS, []() {
+        setCORSHeaders();
+        server.send(200);
+    });
+    
+    server.on("/api/download", HTTP_OPTIONS, []() {
+        setCORSHeaders();
+        server.send(200);
+    });
+    
+    // Main handlers
     server.on("/", HTTP_GET, handleRoot);
     server.on("/update", HTTP_POST, 
         []() { server.send(200, "text/plain", "OK"); },
@@ -1306,16 +1509,26 @@ void initWebServer() {
     // API endpoints for file management
     server.on("/api/files", HTTP_GET, handleAPIFiles);
     server.on("/api/files", HTTP_POST, 
-        []() { server.send(200, "application/json", "{\"status\":\"success\"}"); },
+        []() { 
+            setCORSHeaders();
+            server.send(200, "application/json", "{\"status\":\"success\"}"); 
+        },
         handleAPIFiles
     );
     server.on("/api/files", HTTP_DELETE, handleAPIFiles);
+    
+    // API endpoint for downloading files
+    server.on("/api/download", HTTP_GET, handleDownload);
     
     server.begin();
     Serial.println("HTTP server started");
     Serial.print("Web interface: http://");
     Serial.println(WiFi.localIP());
-    Serial.println("API: GET/POST/DELETE /api/files");
+    Serial.println("API endpoints:");
+    Serial.println("  GET  /api/files        - List all files");
+    Serial.println("  POST /api/files        - Upload file");
+    Serial.println("  DELETE /api/files      - Delete file");
+    Serial.println("  GET  /api/download     - Download file");
 }
 
 // ==================== Setup ====================
@@ -1357,6 +1570,7 @@ void setup() {
     if (sdInitialized) {
         // Find images
         findImageFiles();
+        debugFileList(); // Отладочный вывод списка файлов
         
         if (!imageFiles.empty()) {
             initRandomSlideshow();
@@ -1373,6 +1587,15 @@ void setup() {
             
             Serial.println("\nSlideshow started!");
             Serial.printf("Total images: %d\n", imageFiles.size());
+            
+            // SD card info
+            uint64_t totalSpace = SD.cardSize();
+            uint64_t usedSpace = SD.usedBytes();
+            uint64_t freeSpace = totalSpace - usedSpace;
+            Serial.printf("SD Card: Total=%s, Used=%s, Free=%s\n", 
+                formatBytes(totalSpace).c_str(),
+                formatBytes(usedSpace).c_str(),
+                formatBytes(freeSpace).c_str());
             
             // Format interval for display
             String intervalStr;
