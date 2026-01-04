@@ -20,8 +20,16 @@ int currentImageIndex = 0;
 int currentShuffleIndex = 0;
 unsigned long lastImageChange = 0;
 
-// Slideshow intervals
-const unsigned long intervals[] = {5000, 10000, 15000, 30000, 60000, 120000};
+// Updated slideshow intervals: 5с, 30с, 1м, 5м, 15м, 30м, 60м
+const unsigned long intervals[] = {
+  5000,      // 5 seconds
+  30000,     // 30 seconds
+  60000,     // 1 minute
+  300000,    // 5 minutes
+  900000,    // 15 minutes
+  1800000,   // 30 minutes
+  3600000    // 60 minutes
+};
 int currentIntervalIndex = INTERVAL_DEFAULT_INDEX;
 unsigned long slideshowInterval = intervals[currentIntervalIndex];
 
@@ -43,7 +51,8 @@ const char* menuItems[] = {"Set Interval", "Set Brightness", "System Info", "Exi
 int menuItemCount = 4;
 int selectedMenuItem = 0;
 unsigned long menuLastInteraction = 0;
-const unsigned long SETTING_TIMEOUT = 5000; // 5 секунд для выхода из настроек
+//const unsigned long SETTING_TIMEOUT = 5000; // 5 секунд для выхода из настроек
+//const unsigned long MENU_TIMEOUT = 10000;  // 10 секунд для выхода из главного меню
 
 // Fatal error
 bool fatalError = false;
@@ -74,7 +83,12 @@ bool showingLoading = false;
 String loadingMessage = "";
 float loadingProgress = 0.0;
 unsigned long lastProgressUpdate = 0;
-const unsigned long PROGRESS_UPDATE_INTERVAL = 100; // Обновлять прогресс не чаще чем раз в 100мс
+const unsigned long PROGRESS_UPDATE_INTERVAL = 100;
+
+// OTA update progress
+unsigned long otaTotalSize = 0;
+unsigned long otaCurrentSize = 0;
+bool otaInProgress = false;
 
 // ==================== Forward Declarations ====================
 void displayImage(int index);
@@ -109,7 +123,7 @@ void checkWiFiConnection();
 void initWebServer();
 void handleRoot();
 void handleOTA();
-void showWiFiMessage(const String& message);
+void handleAPI();
 
 // SD Card Functions
 bool initSDCard();
@@ -145,7 +159,6 @@ void showLoadingScreen(const String& message) {
 void updateLoadingProgress(float progress, const String& message) {
     if (!showingLoading) return;
     
-    // Ограничиваем частоту обновления для плавности
     unsigned long now = millis();
     if (now - lastProgressUpdate < PROGRESS_UPDATE_INTERVAL && progress < 1.0) {
         return;
@@ -161,13 +174,8 @@ void updateLoadingProgress(float progress, const String& message) {
     // Clear progress bar area
     gfx.fillRect(82, 392, 300, 21, BLACK);
     
-    // Draw progress bar with gradient effect
-    for (int i = 0; i < barWidth; i++) {
-        int colorIntensity = map(i, 0, barWidth, 100, 255);
-        gfx.drawFastVLine(82 + i, 392, 21, gfx.color565(0, colorIntensity, 0));
-    }
-    
-    // Draw bar border
+    // Draw progress bar
+    gfx.fillRect(82, 392, barWidth, 21, GREEN);
     gfx.drawRect(80, 390, 320, 25, WHITE);
     
     // Show percentage
@@ -602,6 +610,15 @@ void processButtonInput() {
             Serial.println("Settings timeout - returning to menu");
         }
     }
+    
+    // Check timeout for main menu
+    if (currentState == STATE_MENU) {
+        if (now - menuLastInteraction > MENU_TIMEOUT) {
+            // Return to slideshow after 10 seconds of inactivity
+            exitToSlideshow();
+            Serial.println("Menu timeout - returning to slideshow");
+        }
+    }
 }
 
 void handleShortPress() {
@@ -695,7 +712,16 @@ void changeInterval() {
     slideshowInterval = intervals[currentIntervalIndex];
     
     saveIntervalToSD();
-    showMessage("Interval: " + String(slideshowInterval / 1000) + " sec", GREEN);
+    
+    // Format interval for display
+    String intervalStr;
+    if (slideshowInterval < 60000) {
+        intervalStr = String(slideshowInterval / 1000) + " sec";
+    } else {
+        intervalStr = String(slideshowInterval / 60000) + " min";
+    }
+    
+    showMessage("Interval: " + intervalStr, GREEN);
     lastImageChange = millis();
     
     Serial.printf("Interval changed to: %lu ms\n", slideshowInterval);
@@ -734,6 +760,9 @@ void showMainMenu() {
     gfx.setTextSize(1);
     gfx.setTextColor(YELLOW);
     gfx.print("Short: Select/Change  Long: Navigate/Adjust");
+    
+    gfx.setCursor(100, 430);
+    gfx.print("Auto-exit in 10 seconds");
 }
 
 void showIntervalSetting() {
@@ -749,14 +778,21 @@ void showIntervalSetting() {
     gfx.setCursor(150, 200);
     gfx.setTextSize(4);
     gfx.setTextColor(GREEN);
-    gfx.print(slideshowInterval / 1000);
-    gfx.print(" sec");
+    
+    // Format interval for display
+    if (slideshowInterval < 60000) {
+        gfx.print(slideshowInterval / 1000);
+        gfx.print(" sec");
+    } else {
+        gfx.print(slideshowInterval / 60000);
+        gfx.print(" min");
+    }
     
     // Options
-    gfx.setCursor(80, 300);
+    gfx.setCursor(50, 300);
     gfx.setTextSize(2);
     gfx.setTextColor(YELLOW);
-    gfx.print("Options: 5, 10, 15, 30, 60, 120");
+    gfx.print("5s, 30s, 1m, 5m, 15m, 30m, 60m");
     
     // Instructions
     gfx.setCursor(50, 400);
@@ -839,8 +875,13 @@ void showSystemInfo() {
     gfx.setCursor(50, y);
     gfx.print("Interval: ");
     gfx.setTextColor(GREEN);
-    gfx.print(slideshowInterval / 1000);
-    gfx.print(" sec");
+    if (slideshowInterval < 60000) {
+        gfx.print(slideshowInterval / 1000);
+        gfx.print(" sec");
+    } else {
+        gfx.print(slideshowInterval / 60000);
+        gfx.print(" min");
+    }
     
     y += lineHeight;
     
@@ -994,205 +1035,203 @@ void checkWiFiConnection() {
     }
 }
 
+// ==================== API Functions ====================
+void handleAPIFiles() {
+    // GET request - return list of files (only names)
+    if (server.method() == HTTP_GET) {
+        Serial.println("GET /api/files - Processing request");
+        
+        // Создаем JSON документ с достаточным размером
+        DynamicJsonDocument doc(24576); // Увеличил размер для большего количества файлов
+        JsonArray files = doc.to<JsonArray>();
+        
+        // Просто добавляем имена файлов без открытия каждого файла
+        for (const String& filepath : imageFiles) {
+            // Извлекаем только имя файла из пути
+            String filename = filepath.substring(1); // Убираем ведущий "/"
+            
+            // Находим последний слэш (если есть подкаталоги)
+            int lastSlash = filename.lastIndexOf('/');
+            if (lastSlash != -1) {
+                filename = filename.substring(lastSlash + 1);
+            }
+            
+            files.add(filename);
+        }
+        
+        doc["count"] = imageFiles.size();
+        doc["status"] = "success";
+        
+        String response;
+        size_t jsonSize = serializeJson(doc, response);
+        Serial.printf("JSON size: %d bytes, Files: %d\n", jsonSize, imageFiles.size());
+        
+        server.send(200, "application/json", response);
+    }
+    // POST request - upload file
+    else if (server.method() == HTTP_POST) {
+        HTTPUpload& upload = server.upload();
+        static File uploadFile;
+        
+        if (upload.status == UPLOAD_FILE_START) {
+            String filename = "/" + upload.filename;
+            Serial.printf("Upload start: %s\n", filename.c_str());
+            
+            // Close previous file if open
+            if (uploadFile) {
+                uploadFile.close();
+            }
+            
+            SD.remove(filename);
+            uploadFile = SD.open(filename, FILE_WRITE);
+            if (!uploadFile) {
+                Serial.println("Failed to open file for writing");
+            }
+        } 
+        else if (upload.status == UPLOAD_FILE_WRITE) {
+            if (uploadFile) {
+                uploadFile.write(upload.buf, upload.currentSize);
+            }
+        } 
+        else if (upload.status == UPLOAD_FILE_END) {
+            if (uploadFile) {
+                uploadFile.close();
+                Serial.printf("Upload complete: %s, Size: %u\n", 
+                             upload.filename.c_str(), upload.totalSize);
+                
+                // Refresh image list
+                findImageFiles();
+                initRandomSlideshow();
+                
+                server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"File uploaded successfully\"}");
+            } else {
+                server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to save file\"}");
+            }
+        }
+    }
+    // DELETE request - delete file
+    else if (server.method() == HTTP_DELETE) {
+        if (server.hasArg("filename")) {
+            String filename = "/" + server.arg("filename");
+            
+            if (SD.exists(filename)) {
+                if (SD.remove(filename)) {
+                    // Refresh image list
+                    findImageFiles();
+                    initRandomSlideshow();
+                    
+                    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"File deleted successfully\"}");
+                } else {
+                    server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to delete file\"}");
+                }
+            } else {
+                server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"File not found\"}");
+            }
+        } else {
+            server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing filename parameter\"}");
+        }
+    }
+}
+
 // ==================== Web Server Handlers ====================
 void handleRoot() {
     String html = "<!DOCTYPE html><html><head><title>ESP32 Photo Frame OTA</title>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
     html += "<meta charset='UTF-8'>";
     html += "<style>";
-    html += "body{font-family:Arial,sans-serif;margin:0;padding:20px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh}";
-    html += ".container{max-width:800px;margin:0 auto;background:white;padding:30px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.2)}";
-    html += "h1{color:#333;text-align:center;margin-bottom:30px;font-size:28px}";
-    html += ".status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin:20px 0}";
-    html += ".status-card{background:#f8f9fa;padding:15px;border-radius:8px;border-left:4px solid}";
-    html += ".status-card.wifi{border-left-color:#4CAF50}";
-    html += ".status-card.sd{border-left-color:#2196F3}";
-    html += ".status-card.images{border-left-color:#FF9800}";
-    html += ".status-card.memory{border-left-color:#9C27B0}";
-    html += ".status-label{font-weight:bold;color:#555;font-size:14px;margin-bottom:5px}";
-    html += ".status-value{color:#333;font-size:18px;font-weight:600}";
-    html += ".connected{color:#4CAF50}";
-    html += ".disconnected{color:#f44336}";
-    html += ".update-section{background:#f0f7ff;padding:25px;border-radius:10px;margin:30px 0;border:2px dashed #2196F3}";
-    html += ".update-section h2{color:#2196F3;margin-top:0;text-align:center}";
-    html += ".form-group{margin:20px 0}";
-    html += "input[type='file']{width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:16px;margin:10px 0}";
-    html += "input[type='submit']{background:linear-gradient(135deg,#4CAF50 0%,#2E7D32 100%);color:white;border:none;padding:15px 30px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;width:100%;transition:transform 0.2s,box-shadow 0.2s}";
-    html += "input[type='submit']:hover{transform:translateY(-2px);box-shadow:0 5px 15px rgba(76,175,80,0.3)}";
-    html += ".progress-container{margin:20px 0;display:none}";
-    html += ".progress-label{display:flex;justify-content:space-between;margin-bottom:8px}";
-    html += ".progress-bar{height:20px;background:#e0e0e0;border-radius:10px;overflow:hidden}";
-    html += ".progress-fill{height:100%;background:linear-gradient(90deg,#4CAF50,#8BC34A);width:0%;transition:width 0.3s;border-radius:10px}";
-    html += ".instructions{background:#fff8e1;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #FFC107}";
-    html += ".instructions h3{color:#FF9800;margin-top:0}";
-    html += ".instructions ul{padding-left:20px}";
-    html += ".instructions li{margin:8px 0;color:#555}";
-    html += ".device-info{text-align:center;color:#666;margin-top:20px;font-size:14px}";
-    html += "@media (max-width:600px){.container{padding:15px}.status-grid{grid-template-columns:1fr}}";
+    html += "body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f0f0;min-height:100vh}";
+    html += ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}";
+    html += "h1{color:#333;text-align:center;margin-bottom:20px}";
+    html += ".status{margin:20px 0;padding:15px;background:#f8f9fa;border-radius:5px}";
+    html += ".status-item{margin:10px 0}";
+    html += ".label{font-weight:bold;color:#555}";
+    html += ".value{color:#333}";
+    html += ".ota-section{margin:30px 0;padding:20px;background:#e8f4fd;border-radius:5px;border:2px solid #2196F3}";
+    html += ".ota-section h2{margin-top:0;color:#2196F3}";
+    html += "input[type='file']{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:5px}";
+    html += "input[type='submit']{background:#4CAF50;color:white;border:none;padding:12px 24px;border-radius:5px;cursor:pointer;font-size:16px;width:100%}";
+    html += ".progress{width:100%;background:#ddd;border-radius:5px;margin:10px 0;display:none}";
+    html += ".progress-bar{width:0%;height:20px;background:#4CAF50;border-radius:5px}";
     html += "</style>";
     html += "</head><body>";
     
     html += "<div class='container'>";
-    html += "<h1>📷 ESP32 Photo Frame - OTA Update</h1>";
+    html += "<h1>ESP32 Photo Frame - OTA Update</h1>";
     
-    // Status Grid
-    html += "<div class='status-grid'>";
-    
-    // Wi-Fi Status
-    html += "<div class='status-card wifi'>";
-    html += "<div class='status-label'>Wi-Fi Status</div>";
-    html += "<div class='status-value " + String(wifiConnected ? "connected" : "disconnected") + "'>";
-    html += (wifiConnected ? "Connected ✓" : "Disconnected ✗");
-    html += "</div>";
-    if (wifiConnected) {
-        html += "<div style='margin-top:5px;font-size:12px;color:#666'>" + WiFi.localIP().toString() + "</div>";
-    }
+    // Status
+    html += "<div class='status'>";
+    html += "<div class='status-item'><span class='label'>Device:</span> <span class='value'>" + String(OTA_HOSTNAME) + "</span></div>";
+    html += "<div class='status-item'><span class='label'>Wi-Fi:</span> <span class='value'>" + (wifiConnected ? "Connected (" + WiFi.localIP().toString() + ")" : "Disconnected") + "</span></div>";
+    html += "<div class='status-item'><span class='label'>Images:</span> <span class='value'>" + String(imageFiles.size()) + "</span></div>";
+    html += "<div class='status-item'><span class='label'>Free Memory:</span> <span class='value'>" + String(ESP.getFreeHeap() / 1024) + " KB</span></div>";
     html += "</div>";
     
-    // SD Card Status
-    html += "<div class='status-card sd'>";
-    html += "<div class='status-label'>SD Card</div>";
-    html += "<div class='status-value " + String(SD.cardType() != CARD_NONE ? "connected" : "disconnected") + "'>";
-    html += (SD.cardType() != CARD_NONE ? "Connected ✓" : "Error/Not Connected ✗");
-    html += "</div>";
-    html += "</div>";
-    
-    // Images
-    html += "<div class='status-card images'>";
-    html += "<div class='status-label'>Images Found</div>";
-    html += "<div class='status-value'>" + String(imageFiles.size()) + "</div>";
-    html += "</div>";
-    
-    // Memory
-    html += "<div class='status-card memory'>";
-    html += "<div class='status-label'>Free Memory</div>";
-    html += "<div class='status-value'>" + String(ESP.getFreeHeap() / 1024) + " KB</div>";
-    html += "</div>";
-    
-    html += "</div>"; // End status-grid
-    
-    // Instructions
-    html += "<div class='instructions'>";
-    html += "<h3>⚠️ Important Instructions:</h3>";
-    html += "<ul>";
-    html += "<li>Select the firmware file (.bin) for update</li>";
-    html += "<li>Do NOT disconnect power during update!</li>";
-    html += "<li>Update process takes about 30-60 seconds</li>";
-    html += "<li>Device will reboot automatically after update</li>";
-    html += "<li>Keep Wi-Fi connection stable during update</li>";
-    html += "</ul>";
-    html += "</div>";
-    
-    // Update Section
-    html += "<div class='update-section'>";
-    html += "<h2>📤 Firmware Update</h2>";
+    // OTA Section
+    html += "<div class='ota-section'>";
+    html += "<h2>Firmware Update</h2>";
     html += "<form id='uploadForm' method='POST' action='/update' enctype='multipart/form-data'>";
-    html += "<div class='form-group'>";
     html += "<input type='file' name='update' accept='.bin' required id='fileInput'>";
-    html += "</div>";
-    html += "<div class='form-group'>";
-    html += "<input type='submit' value='🚀 Start Firmware Update' id='submitBtn'>";
-    html += "</div>";
+    html += "<input type='submit' value='Upload Firmware' id='submitBtn'>";
     html += "</form>";
     
-    html += "<div class='progress-container' id='progressContainer'>";
-    html += "<div class='progress-label'>";
-    html += "<span>Upload Progress:</span>";
-    html += "<span id='progressPercent'>0%</span>";
+    html += "<div class='progress' id='progressContainer'>";
+    html += "<div class='progress-bar' id='progressBar'></div>";
+    html += "<div id='progressText' style='text-align:center;margin-top:5px'></div>";
     html += "</div>";
-    html += "<div class='progress-bar'>";
-    html += "<div class='progress-fill' id='progressFill'></div>";
     html += "</div>";
-    html += "<div id='progressStatus' style='margin-top:10px;font-size:14px;color:#666'></div>";
-    html += "</div>";
-    html += "</div>"; // End update-section
     
-    // Device Info
-    html += "<div class='device-info'>";
-    html += "<p>Device: " + String(OTA_HOSTNAME) + " | Version: 2.0 | OTA Update Portal</p>";
+    html += "<div style='text-align:center;margin-top:20px;color:#666;font-size:14px'>";
+    html += "<p>API Endpoints:</p>";
+    html += "<p>GET /api/files - List all photos</p>";
+    html += "<p>POST /api/files - Upload photo</p>";
+    html += "<p>DELETE /api/files?filename=... - Delete photo</p>";
     html += "</div>";
     
     html += "</div>"; // End container
     
-    // JavaScript
+    // JavaScript for OTA progress
     html += "<script>";
-    html += "document.addEventListener('DOMContentLoaded', function() {";
-    html += "const form = document.getElementById('uploadForm');";
-    html += "const fileInput = document.getElementById('fileInput');";
-    html += "const submitBtn = document.getElementById('submitBtn');";
-    html += "const progressContainer = document.getElementById('progressContainer');";
-    html += "const progressFill = document.getElementById('progressFill');";
-    html += "const progressPercent = document.getElementById('progressPercent');";
-    html += "const progressStatus = document.getElementById('progressStatus');";
-    
-    html += "fileInput.addEventListener('change', function(e) {";
-    html += "if (this.files.length > 0) {";
-    html += "const file = this.files[0];";
-    html += "const fileSize = (file.size / 1024 / 1024).toFixed(2);";
-    html += "submitBtn.value = '🚀 Update Firmware (' + fileSize + ' MB)';";
-    html += "}";
-    html += "});";
-    
-    html += "form.addEventListener('submit', function(e) {";
+    html += "document.getElementById('uploadForm').onsubmit = function(e) {";
     html += "e.preventDefault();";
-    html += "if (fileInput.files.length === 0) {";
+    html += "var fileInput = document.getElementById('fileInput');";
+    html += "if(fileInput.files.length === 0) {";
     html += "alert('Please select a firmware file first!');";
-    html += "return;";
+    html += "return false;";
     html += "}";
     
-    html += "const file = fileInput.files[0];";
-    html += "const xhr = new XMLHttpRequest();";
-    html += "const formData = new FormData();";
-    html += "formData.append('update', file);";
+    html += "var formData = new FormData();";
+    html += "formData.append('update', fileInput.files[0]);";
     
-    html += "progressContainer.style.display = 'block';";
-    html += "submitBtn.disabled = true;";
-    html += "submitBtn.value = '⏳ Uploading...';";
-    html += "progressStatus.textContent = 'Starting upload...';";
+    html += "var xhr = new XMLHttpRequest();";
+    html += "document.getElementById('progressContainer').style.display = 'block';";
+    html += "document.getElementById('submitBtn').disabled = true;";
+    html += "document.getElementById('submitBtn').value = 'Uploading...';";
     
-    html += "xhr.upload.addEventListener('progress', function(e) {";
+    html += "xhr.upload.onprogress = function(e) {";
     html += "if (e.lengthComputable) {";
-    html += "const percent = Math.round((e.loaded / e.total) * 100);";
-    html += "progressFill.style.width = percent + '%';";
-    html += "progressPercent.textContent = percent + '%';";
-    html += "if (percent < 100) {";
-    html += "progressStatus.textContent = 'Uploading: ' + percent + '%';";
+    html += "var percent = Math.round((e.loaded / e.total) * 100);";
+    html += "document.getElementById('progressBar').style.width = percent + '%';";
+    html += "document.getElementById('progressText').textContent = 'Uploading: ' + percent + '%';";
     html += "}";
-    html += "}";
-    html += "});";
+    html += "};";
     
-    html += "xhr.addEventListener('load', function() {";
+    html += "xhr.onload = function() {";
     html += "if (xhr.status === 200) {";
-    html += "progressFill.style.width = '100%';";
-    html += "progressPercent.textContent = '100%';";
-    html += "progressStatus.textContent = '✅ Update complete! Rebooting...';";
-    html += "progressStatus.style.color = '#4CAF50';";
-    
-    html += "setTimeout(function() {";
-    html += "progressStatus.textContent = '🔄 Device is rebooting...';";
-    html += "setTimeout(function() {";
-    html += "window.location.reload();";
-    html += "}, 2000);";
-    html += "}, 1000);";
+    html += "document.getElementById('progressText').textContent = '✅ Update complete! Rebooting...';";
+    html += "document.getElementById('progressText').style.color = '#4CAF50';";
+    html += "setTimeout(function() { location.reload(); }, 3000);";
     html += "} else {";
-    html += "progressStatus.textContent = '❌ Update failed! Error: ' + xhr.statusText;";
-    html += "progressStatus.style.color = '#f44336';";
-    html += "submitBtn.disabled = false;";
-    html += "submitBtn.value = '🚀 Try Again';";
+    html += "document.getElementById('progressText').textContent = '❌ Update failed!';";
+    html += "document.getElementById('progressText').style.color = '#f44336';";
+    html += "document.getElementById('submitBtn').disabled = false;";
+    html += "document.getElementById('submitBtn').value = 'Upload Firmware';";
     html += "}";
-    html += "});";
-    
-    html += "xhr.addEventListener('error', function() {";
-    html += "progressStatus.textContent = '❌ Upload failed! Network error.';";
-    html += "progressStatus.style.color = '#f44336';";
-    html += "submitBtn.disabled = false;";
-    html += "submitBtn.value = '🚀 Try Again';";
-    html += "});";
+    html += "};";
     
     html += "xhr.open('POST', '/update');";
     html += "xhr.send(formData);";
-    html += "});";
-    html += "});";
+    html += "return false;";
+    html += "};";
     html += "</script>";
     
     html += "</body></html>";
@@ -1206,6 +1245,9 @@ void handleOTA() {
     if (upload.status == UPLOAD_FILE_START) {
         Serial.printf("OTA Update Started: %s\n", upload.filename.c_str());
         Serial.setDebugOutput(true);
+        otaInProgress = true;
+        otaTotalSize = upload.totalSize;
+        otaCurrentSize = 0;
         
         // Start the update
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
@@ -1214,14 +1256,22 @@ void handleOTA() {
     } 
     else if (upload.status == UPLOAD_FILE_WRITE) {
         // Write the received data
-        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        size_t written = Update.write(upload.buf, upload.currentSize);
+        if (written != upload.currentSize) {
             Update.printError(Serial);
+        }
+        otaCurrentSize += upload.currentSize;
+        
+        // Show progress
+        if (otaTotalSize > 0) {
+            int progress = (otaCurrentSize * 100) / otaTotalSize;
+            Serial.printf("OTA Progress: %d%%\n", progress);
         }
     } 
     else if (upload.status == UPLOAD_FILE_END) {
         // Finalize the update
         if (Update.end(true)) {
-            Serial.printf("Update Success: %u bytes\n", upload.totalSize);
+            Serial.printf("OTA Update Success: %u bytes\n", upload.totalSize);
             Serial.println("Rebooting...");
             
             // Send success response
@@ -1235,11 +1285,13 @@ void handleOTA() {
             Update.printError(Serial);
             server.send(500, "text/plain", "Update FAILED");
         }
+        otaInProgress = false;
         Serial.setDebugOutput(false);
     } 
     else if (upload.status == UPLOAD_FILE_ABORTED) {
-        Serial.println("Update was aborted");
+        Serial.println("OTA Update was aborted");
         Update.end();
+        otaInProgress = false;
         server.send(500, "text/plain", "Update aborted");
     }
 }
@@ -1251,10 +1303,19 @@ void initWebServer() {
         handleOTA
     );
     
+    // API endpoints for file management
+    server.on("/api/files", HTTP_GET, handleAPIFiles);
+    server.on("/api/files", HTTP_POST, 
+        []() { server.send(200, "application/json", "{\"status\":\"success\"}"); },
+        handleAPIFiles
+    );
+    server.on("/api/files", HTTP_DELETE, handleAPIFiles);
+    
     server.begin();
     Serial.println("HTTP server started");
-    Serial.print("OTA available at: http://");
+    Serial.print("Web interface: http://");
     Serial.println(WiFi.localIP());
+    Serial.println("API: GET/POST/DELETE /api/files");
 }
 
 // ==================== Setup ====================
@@ -1264,9 +1325,10 @@ void setup() {
     
     Serial.println("\n" + String(60, '='));
     Serial.println("ESP32 Photo Frame - Enhanced Version");
+    Serial.println("Intervals: 5s, 30s, 1m, 5m, 15m, 30m, 60m");
     Serial.println("Short press: Open menu / Select");
     Serial.println("Long press: Change interval / Navigate");
-    Serial.println("Settings auto-close after 5 seconds");
+    Serial.println("Menu auto-close: 10s, Settings auto-close: 5s");
     Serial.println(String(60, '='));
     
     randomSeed(micros());
@@ -1311,11 +1373,19 @@ void setup() {
             
             Serial.println("\nSlideshow started!");
             Serial.printf("Total images: %d\n", imageFiles.size());
-            Serial.printf("Interval: %lu ms (%d seconds)\n", slideshowInterval, slideshowInterval / 1000);
+            
+            // Format interval for display
+            String intervalStr;
+            if (slideshowInterval < 60000) {
+                intervalStr = String(slideshowInterval / 1000) + " seconds";
+            } else {
+                intervalStr = String(slideshowInterval / 60000) + " minutes";
+            }
+            Serial.printf("Interval: %s\n", intervalStr.c_str());
             Serial.printf("Brightness: %d/255\n", currentBrightness);
             
             if (wifiConnected) {
-                Serial.print("OTA: http://");
+                Serial.print("Web interface: http://");
                 Serial.println(WiFi.localIP());
             }
         } else {
@@ -1351,7 +1421,7 @@ void setup() {
             
             gfx.setCursor(50, 400);
             gfx.setTextColor(CYAN);
-            gfx.print("OTA: ");
+            gfx.print("Web: ");
             gfx.print(WiFi.localIP().toString());
             
             gfx.setCursor(100, 450);

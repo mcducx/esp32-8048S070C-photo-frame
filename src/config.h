@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 // ==================== Slideshow Configuration ====================
-#define INTERVAL_DEFAULT_INDEX 2
+#define INTERVAL_DEFAULT_INDEX 2  // Default to 1 minute (60000 ms)
 #define INTERVAL_FILENAME "/interval.txt"
 #define BRIGHTNESS_FILENAME "/brightness.txt"
 
@@ -11,8 +11,9 @@
 
 // Button timing (milliseconds)
 #define SHORT_PRESS_TIME 50
-#define LONG_PRESS_TIME 500    // Уменьшено для лучшего отклика
-#define MENU_TIMEOUT 30000     // 30 секунд бездействия в меню
+#define LONG_PRESS_TIME 500    // 500ms для длинного нажатия
+#define MENU_TIMEOUT 10000     // 10 секунд бездействия в главном меню
+#define SETTING_TIMEOUT 5000   // 5 секунд для выхода из настроек
 
 // ==================== SD Card SPI Configuration ====================
 #define SD_SCK   12
