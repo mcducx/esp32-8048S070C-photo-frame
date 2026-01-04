@@ -1,14 +1,18 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// ==================== Settings ====================
+// ==================== Slideshow Configuration ====================
+#define INTERVAL_DEFAULT_INDEX 2
 #define INTERVAL_FILENAME "/interval.txt"
 #define BRIGHTNESS_FILENAME "/brightness.txt"
-#define INTERVAL_DEFAULT_INDEX 2
-#define BRIGHTNESS_DEFAULT 128  // 50% brightness (0-255)
 
 // ==================== Button Configuration ====================
 #define BOOT_BUTTON_PIN 0  // GPIO0 - кнопка BOOT на ESP32
+
+// Button timing (milliseconds)
+#define SHORT_PRESS_TIME 50
+#define LONG_PRESS_TIME 500    // Уменьшено для лучшего отклика
+#define MENU_TIMEOUT 30000     // 30 секунд бездействия в меню
 
 // ==================== SD Card SPI Configuration ====================
 #define SD_SCK   12
@@ -27,6 +31,12 @@
 // ==================== Web Server Settings ====================
 #define WEB_PORT 80
 #define MAX_UPLOAD_SIZE 10485760  // 10MB max file size
+
+// ==================== Display Settings ====================
+#define MAX_BRIGHTNESS 255
+#define MIN_BRIGHTNESS 20
+#define BRIGHTNESS_STEP 10
+#define BRIGHTNESS_DEFAULT 128
 
 // ==================== Debug Settings ====================
 #define DEBUG_SERIAL true

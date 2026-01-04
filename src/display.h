@@ -13,9 +13,6 @@ extern Arduino_RGB_Display gfx;
 // ==================== Display Functions ====================
 bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap);
 void setup_display();
-void setBrightness(uint8_t brightness);
-uint8_t getBrightness();
-void saveBrightnessToSD();
-void loadBrightnessFromSD();
+void set_brightness(uint8_t level);
 
 #endif // DISPLAY_H
