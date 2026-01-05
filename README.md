@@ -12,7 +12,6 @@ Purchase link: https://www.aliexpress.com/item/1005008069223989.html?spm=a2g0o.t
 - **Physical Controls**: Button for menu navigation and settings
 - **Wi-Fi Connectivity**: Built-in web server for remote management
 - **OTA Updates**: Firmware updates via web interface
-- **File Management**: Upload/delete images through web interface
 - **API Support**: REST API for file management
 - **System Info**: Display device status and storage information
 
@@ -45,16 +44,15 @@ Purchase link: https://www.aliexpress.com/item/1005008069223989.html?spm=a2g0o.t
 
 3. **Configure settings**
    - Update Wi-Fi credentials in `config.h`
-   - Adjust display pins if needed
 
 4. **Upload firmware**
-   - Select ESP32 board in Arduino IDE
-   - Upload the sketch
+   - Add board to PlatformIO https://github.com/rzeldent/platformio-espressif32-sunton
+   - Build and Upload the sketch
 
 5. **Prepare SD card**
    - Format SD card as FAT32
    - Add JPG images to root directory
-   - Insert into SD card module
+   - Insert into SD card moduleFuture Features
 
 ## Usage
 
@@ -102,9 +100,11 @@ src/
 platformio.ini        # PlatformIO configuration
 ```
 
-# Resolving the Build Error
+# Future Features
+## ImageFlow Converter Integration
 
-Add board to PlatformIO https://github.com/rzeldent/platformio-espressif32-sunton
+- I plan to integrate ImageFlow for automatic optimization, image conversion and batch upload via REST API.
+
 
 ## Screenshot
 
