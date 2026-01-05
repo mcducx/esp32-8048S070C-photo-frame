@@ -1,47 +1,89 @@
-# ESP32 Portrait Photo Frame
+# ESP32 Photo Frame
 
-A simple digital photo frame based on ESP32 with an 800×480 display, operating in portrait mode (480×800) with automatic slideshow.
+A feature-rich digital photo frame based on ESP32 with touch display, SD card support, Wi-Fi connectivity, and OTA updates.
 Purchase link: https://www.aliexpress.com/item/1005008069223989.html?spm=a2g0o.tesla.0.0.5146iGumiGumwB
 
-## ✨ Key Features
 
-- **Automatic Slideshow**: The image change timer can be changed by clicking the boot button.
-- **Image Centering**: All photos are always centered on the screen
-- **Minimalist Interface**: No unnecessary elements, only images
-- **SD Card Support**: Read JPEG files from a memory card
+## Features
 
-## 📋 Requirements
+- **Slideshow Mode**: Automatic image rotation with adjustable intervals (5s, 30s, 1m, 5m, 15m, 30m, 60m)
+- **Random Play**: Images are shuffled for varied viewing
+- **Brightness Control**: Adjustable backlight brightness (20-255)
+- **Physical Controls**: Button for menu navigation and settings
+- **Wi-Fi Connectivity**: Built-in web server for remote management
+- **OTA Updates**: Firmware updates via web interface
+- **File Management**: Upload/delete images through web interface
+- **API Support**: REST API for file management
+- **System Info**: Display device status and storage information
 
-### Hardware
-- ESP32-8048S070C board
-- 800×480 display with RGB interface
-- GT911 touchscreen (optional, not used in current version)
-- SD card (FAT32 format)
+## Hardware Requirements
 
-### Software
-- PlatformIO
-- Arduino framework
-- Libraries (specified in `platformio.ini`)
+- ESP32 development board
+- RGB display (480x800 resolution)
+- SD card module
+- Boot button for navigation
+- SD card with JPG images
 
-## ⚙️ Setup
+## Pin Configuration
 
-1. **Prepare the SD Card**:
-   - Format to FAT32
-   - Use my converter: (https://github.com/mcducx/imageflow/tree/main)
-   - Add JPEG files to the root directory
-   - Optimal image size: 480×800 pixels
+- Display: Custom RGB panel pins (see display.h)
+- SD Card: SCK=12, MISO=13, MOSI=11, CS=10
+- Button: GPIO0 (BOOT button)
 
-## 🚀 Build and Upload
+## Quick Start
 
-1. Clone the repository
-2. Open the project in PlatformIO
-3. Connect the ESP32 to your computer
-4. Execute:
-```bash
-pio run --target upload
-```
-5. Insert the SD card with images
-6. Reset the device
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/esp32-photo-frame.git
+   ```
+
+2. **Install required libraries**
+   - Arduino_GFX_Library
+   - TJpg_Decoder
+   - ArduinoJson
+   - ESP32WebServer
+
+3. **Configure settings**
+   - Update Wi-Fi credentials in `config.h`
+   - Adjust display pins if needed
+
+4. **Upload firmware**
+   - Select ESP32 board in Arduino IDE
+   - Upload the sketch
+
+5. **Prepare SD card**
+   - Format SD card as FAT32
+   - Add JPG images to root directory
+   - Insert into SD card module
+
+## Usage
+
+- **Short press**: Open menu / Select option
+- **Long press**: Change interval / Navigate menu
+- **Menu auto-close**: Returns to slideshow after inactivity
+
+## Web Interface
+
+Once connected to Wi-Fi:
+- Access via `http://[ESP32_IP]`
+- Upload/delete images
+- Monitor system status
+- Perform OTA updates
+
+## API Endpoints
+
+- `GET /api/files` - List all images
+- `POST /api/files` - Upload image
+- `DELETE /api/files` - Delete image
+- `GET /api/download` - Download image
+
+## Configuration
+
+Edit `config.h` to customize:
+- Wi-Fi credentials
+- OTA settings
+- Display parameters
+- Button timing
 
 ## 📁 Project Structure
 
@@ -53,10 +95,6 @@ src/
 └── config.h          # Pin configuration
 platformio.ini        # PlatformIO configuration
 ```
-
-## 🙏 Acknowledgments
-
-Project based on Arduino_GFX
 
 # Resolving the Build Error
 
