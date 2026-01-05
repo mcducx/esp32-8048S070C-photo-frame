@@ -74,12 +74,104 @@ Once connected to Wi-Fi:
 - Add JPEG files to the root directory
 - Optimal image size: 480×800 pixels
 
-## API Endpoints
+## API Endpoints Documentation
 
-- `GET /api/files` - List all images
-- `POST /api/files` - Upload image
-- `DELETE /api/files` - Delete image
-- `GET /api/download` - Download image
+### Current API Endpoints
+
+#### 1. **List Files**
+**Endpoint:** `GET /api/files`
+
+**Description:** Returns a JSON list of all image files on the SD card.
+
+**Response Format:**
+```json
+{
+  "status": "success",
+  "files": ["image1.jpg", "image2.jpg", ...],
+  "count": 15
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://192.168.1.100/api/files
+```
+
+---
+
+#### 2. **Upload File**
+**Endpoint:** `POST /api/files`
+
+**Description:** Upload a new image file to the SD card. Supports multipart form-data.
+
+**Parameters:**
+- `file` (binary): The image file to upload (JPG format recommended)
+
+**Response Format:**
+```json
+{
+  "status": "success",
+  "message": "File uploaded successfully",
+  "filename": "uploaded-image.jpg",
+  "size": 123456
+}
+```
+
+**Example:**
+```bash
+curl -X POST \
+  -F "file=@/path/to/image.jpg" \
+  http://192.168.1.100/api/files
+```
+
+---
+
+#### 3. **Delete File**
+**Endpoint:** `DELETE /api/files`
+
+**Description:** Delete a specific file from the SD card.
+
+**Parameters:**
+- `filename` (string): Name of the file to delete
+
+**Response Format:**
+```json
+{
+  "status": "success",
+  "message": "File deleted successfully",
+  "filename": "deleted-image.jpg"
+}
+```
+
+**Example:**
+```bash
+curl -X DELETE \
+  "http://192.168.1.100/api/files?filename=image.jpg"
+```
+
+---
+
+#### 4. **Download File**
+**Endpoint:** `GET /api/download`
+
+**Description:** Download a specific file from the SD card.
+
+**Parameters:**
+- `filename` (string): Name of the file to download
+
+**Response:** Binary file with appropriate Content-Type header
+
+**Example:**
+```bash
+curl -O -J "http://192.168.1.100/api/download?filename=image.jpg"
+```
+
+**CURL example with output:**
+```bash
+curl -X GET "http://192.168.1.100/api/download?filename=image.jpg" --output downloaded-image.jpg
+```
+
+---
 
 ## Configuration
 
