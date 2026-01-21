@@ -55,7 +55,7 @@ Purchase link: https://www.aliexpress.com/item/1005008069223989.html?spm=a2g0o.t
 ## Prepare the SD Card:
 
 - Format to FAT32
-- Use my converter: (https://github.com/mcducx/imageflow/tree/main)
+- Use my converter: [https://github.com/mcducx/imageflow/tree/main](https://github.com/mcducx/imageflow/releases)
 - Add JPEG files to the root directory
 - Optimal image size: 480×800 pixels
 
